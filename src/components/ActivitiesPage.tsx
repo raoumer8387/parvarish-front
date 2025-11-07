@@ -93,7 +93,7 @@ export function ActivitiesPage({ onStartActivity }: ActivitiesPageProps) {
   ];
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-[#FFF8E1] to-white min-h-screen pt-20 lg:pt-8">
+    <div className="p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-[#FFF8E1] to-white pt-20 lg:pt-8">
       {/* Header */}
       <div className="mb-6 sm:mb-8">
         <h1 className="text-[#2D5F3F] mb-2 text-2xl sm:text-3xl lg:text-4xl">Mind Games & Activities</h1>

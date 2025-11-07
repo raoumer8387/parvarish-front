@@ -1,7 +1,11 @@
 import { Card } from './ui/card';
 import { Progress } from './ui/progress';
 import { Badge } from './ui/badge';
-import { Heart, Clock, Scale, Brain, Star } from 'lucide-react';
+import { Button } from './ui/button';
+import { Heart, Clock, Scale, Brain, Star, CheckCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { BehaviorTrackingPopup } from './BehaviorTrackingPopup';
+import * as behaviorApi from '../api/behaviorApi';
 
 const children = [
   {
@@ -59,12 +63,58 @@ const quotes = [
 
 export function ParentDashboard() {
   const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
+  const [showBehaviorPopup, setShowBehaviorPopup] = useState(false);
+  const [parentId, setParentId] = useState<number | null>(null);
+
+  useEffect(() => {
+    // Get parent ID from user info
+    const userInfo = localStorage.getItem('user_info');
+    if (userInfo) {
+      try {
+        // You may need to fetch parent_id from the backend or store it during login
+        // For now, using a placeholder. Replace with actual parent_id logic
+        setParentId(1); // TODO: Get actual parent_id
+      } catch (err) {
+        console.error('Failed to parse user info', err);
+      }
+    }
+
+    // Check if behavior popup should be shown
+    if (behaviorApi.shouldShowBehaviorPopup() || behaviorApi.shouldShowReminder()) {
+      setShowBehaviorPopup(true);
+    }
+  }, []);
+
+  const handleOpenBehaviorCheckIn = () => {
+    setShowBehaviorPopup(true);
+  };
+
+  const handleCloseBehaviorPopup = () => {
+    setShowBehaviorPopup(false);
+  };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-[#FFF8E1] to-white min-h-screen pt-20 lg:pt-8">
+    <div className="p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-[#FFF8E1] to-white pt-20 lg:pt-8">
+      {/* Behavior Tracking Popup */}
+      {showBehaviorPopup && parentId && (
+        <BehaviorTrackingPopup
+          parentId={parentId}
+          onClose={handleCloseBehaviorPopup}
+        />
+      )}
+
       {/* Welcome Header */}
       <div className="mb-6 lg:mb-8">
-        <h1 className="text-[#2D5F3F] mb-2 text-2xl sm:text-3xl lg:text-4xl">Welcome, Ahmed</h1>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+          <h1 className="text-[#2D5F3F] text-2xl sm:text-3xl lg:text-4xl">Welcome, Ahmed</h1>
+          <Button
+            onClick={handleOpenBehaviorCheckIn}
+            className="bg-gradient-to-r from-[#A8E6CF] to-[#8BD4AE] hover:from-[#8BD4AE] hover:to-[#A8E6CF] text-[#2D5F3F] rounded-xl font-medium"
+          >
+            <CheckCircle className="h-4 w-4 mr-2" />
+            Daily Check-in
+          </Button>
+        </div>
         <div className="flex items-start gap-2 bg-white/60 p-3 sm:p-4 rounded-2xl border-l-4 border-[#A8E6CF]">
           <span className="text-xl sm:text-2xl">💡</span>
           <p className="text-sm sm:text-base text-gray-700 italic">"{randomQuote}"</p>

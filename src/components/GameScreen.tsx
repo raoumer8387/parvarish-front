@@ -22,7 +22,7 @@ interface Question {
   }[];
 }
 
-export function GameScreen({ activityId, onBack }: GameScreenProps) {
+export function GameScreen({ activityId: _activityId, onBack }: GameScreenProps) {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [score, setScore] = useState(0);
   const [showFeedback, setShowFeedback] = useState(false);

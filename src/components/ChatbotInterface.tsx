@@ -77,7 +77,7 @@ Would you like specific duas to teach Ali about patience?`,
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-[#FFF8E1] to-white p-4 sm:p-6 lg:p-8 pt-20 lg:pt-8">
+    <div className="flex flex-col bg-gradient-to-br from-[#FFF8E1] to-white p-4 sm:p-6 lg:p-8 pt-20 lg:pt-8 min-h-screen">
       {/* Header */}
       <div className="mb-4 sm:mb-6">
         <h1 className="text-[#2D5F3F] mb-3 sm:mb-4 text-2xl sm:text-3xl lg:text-4xl">AI Parenting Assistant</h1>
