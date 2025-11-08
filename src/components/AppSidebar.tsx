@@ -1,4 +1,4 @@
-import { Home, Users, TrendingUp, MessageCircle, Gamepad2, Settings, Menu } from 'lucide-react';
+import { Home, TrendingUp, MessageCircle, Gamepad2, Settings, Menu } from 'lucide-react';
 import { Sheet, SheetContent, SheetTitle, SheetDescription, SheetTrigger } from './ui/sheet';
 import { Button } from './ui/button';
 import { useState } from 'react';
@@ -6,21 +6,26 @@ import { useState } from 'react';
 interface AppSidebarProps {
   currentPage: string;
   onNavigate: (page: string) => void;
+  userType?: 'parent' | 'child';
 }
 
-export function AppSidebar({ currentPage, onNavigate }: AppSidebarProps) {
+export function AppSidebar({ currentPage, onNavigate, userType = 'parent' }: AppSidebarProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  // const menuItems = [
-  //   { id: 'dashboard', label: 'Home', icon: Home },
-  //   { id: 'profiles', label: 'Child Profiles', icon: Users },
-  //   { id: 'progress', label: 'Progress', icon: TrendingUp },
-  //   { id: 'activities', label: 'Activities', icon: Gamepad2 },
-  //   { id: 'settings', label: 'Settings', icon: Settings },
-  // ];
-  const menuItems = [
+  // Different menu items for parent vs child
+  const parentMenuItems = [
+    { id: 'dashboard', label: 'Home', icon: Home },
+    { id: 'progress', label: 'Progress', icon: TrendingUp },
     { id: 'chatbot', label: 'Chatbot', icon: MessageCircle },
+    { id: 'settings', label: 'Settings', icon: Settings },
   ];
+
+  const childMenuItems = [
+    { id: 'games', label: 'Games', icon: Gamepad2 },
+    { id: 'activities', label: 'Activities', icon: TrendingUp },
+  ];
+
+  const menuItems = userType === 'child' ? childMenuItems : parentMenuItems;
 
   const handleNavigate = (page: string) => {
     onNavigate(page);
@@ -66,7 +71,7 @@ export function AppSidebar({ currentPage, onNavigate }: AppSidebarProps) {
       {/* Bottom User Info */}
       <div className="mt-8 p-4 bg-white/10 rounded-xl text-white">
         <p className="text-sm">Logged in as</p>
-        <p>Parent</p>
+        <p className="capitalize">{userType}</p>
       </div>
     </>
   );
@@ -103,7 +108,7 @@ export function AppSidebar({ currentPage, onNavigate }: AppSidebarProps) {
       </div>
 
       {/* Desktop Sidebar */}
-      <div className="hidden lg:flex w-64 bg-gradient-to-b from-[#A8E6CF] to-[#8BD4AE] min-h-screen p-6 flex-col">
+      <div className="hidden lg:flex lg:fixed lg:left-0 lg:top-0 lg:bottom-0 w-64 bg-gradient-to-b from-[#A8E6CF] to-[#8BD4AE] p-6 flex-col overflow-y-auto">
         <SidebarContent />
       </div>
     </>
