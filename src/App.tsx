@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from './components/ui/button';
 import { LoginPage } from './components/LoginPage';
 import { AppSidebar } from './components/AppSidebar';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { ParentDashboard } from './components/ParentDashboard';
 import { ChatbotInterface } from './components/ChatbotInterface';
 import { ActivitiesPage } from './components/ActivitiesPage';
@@ -145,25 +146,29 @@ export default function App() {
 
   // Main app layout with sidebar (for parents)
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-[#FFF8E1] to-white">
-      {/* Sidebar Navigation */}
-      <AppSidebar currentPage={currentPage} onNavigate={handleNavigate} userType={userType || 'parent'} />
+    <ErrorBoundary>
+      <div className="flex min-h-screen bg-gradient-to-br from-[#FFF8E1] to-white">
+        {/* Sidebar Navigation */}
+        <AppSidebar currentPage={currentPage} onNavigate={handleNavigate} userType={userType || 'parent'} />
 
-      {/* Main Content Area */}
-      <div className="flex-1 w-full lg:ml-64 overflow-x-hidden">
-        {/* Top bar with Logout */}
-        <div className="w-full flex justify-end p-4">
-          <Button variant="outline" onClick={handleLogout} className="rounded-lg">
-            Logout
-          </Button>
+        {/* Main Content Area */}
+        <div className="flex-1 w-full lg:ml-64 overflow-x-hidden">
+          {/* Top bar with Logout */}
+          <div className="w-full flex justify-end p-4">
+            <Button variant="outline" onClick={handleLogout} className="rounded-lg">
+              Logout
+            </Button>
+          </div>
+          
+          {/* Page Content */}
+          {currentPage === 'dashboard' && <ParentDashboard />}
+          {currentPage === 'progress' && <ProgressDashboard />}
+          {currentPage === 'chatbot' && <ChatbotInterface />}
+          {currentPage === 'games' && <GamesPage onStartGame={handleStartGame} />}
+          {currentPage === 'activities' && <ActivitiesPage onStartActivity={handleStartActivity} />}
+          {currentPage === 'settings' && <SettingsPage />}
         </div>
-  {currentPage === 'dashboard' && <ParentDashboard />}
-  {currentPage === 'progress' && <ProgressDashboard />}
-  {currentPage === 'chatbot' && <ChatbotInterface />}
-  {currentPage === 'games' && <GamesPage onStartGame={handleStartGame} />}
-  {currentPage === 'activities' && <ActivitiesPage onStartActivity={handleStartActivity} />}
-  {currentPage === 'settings' && <SettingsPage />}
       </div>
-    </div>
+    </ErrorBoundary>
   );
 }

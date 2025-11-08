@@ -7,40 +7,72 @@ import * as behaviorApi from '../api/behaviorApi';
 interface BehaviorPopupProps {
   parentId: number;
   onClose: () => void;
+  preSelectedChildId?: number;
 }
 
-export function BehaviorTrackingPopup({ parentId, onClose }: BehaviorPopupProps) {
+export function BehaviorTrackingPopup({ parentId, onClose, preSelectedChildId }: BehaviorPopupProps) {
+  const [children, setChildren] = useState<behaviorApi.ChildInfo[]>([]);
+  const [selectedChildId, setSelectedChildId] = useState<number | null>(preSelectedChildId || null);
   const [questions, setQuestions] = useState<behaviorApi.BehaviorQuestion[]>([]);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
+  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [loadingChildren, setLoadingChildren] = useState(true);
+  const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+  const [success, setSuccess] = useState<{score: number; total: number} | null>(null);
 
   useEffect(() => {
-    loadQuestions();
-  }, [parentId]);
+    // Load parent's children to select one
+    const fetchChildren = async () => {
+      setLoadingChildren(true);
+      setError('');
+      try {
+        const data = await behaviorApi.getParentChildren();
+        // Ensure data is an array
+        const childrenArray = Array.isArray(data) ? data : (data as any)?.children || [];
+        setChildren(childrenArray);
+        
+        // If preSelectedChildId is provided and valid, load questions immediately
+        if (preSelectedChildId && childrenArray.find((c: any) => c.id === preSelectedChildId)) {
+          loadQuestionsForChild(preSelectedChildId);
+        }
+      } catch (err: any) {
+        setError('Unable to load children. Please try again.');
+        setChildren([]);
+      } finally {
+        setLoadingChildren(false);
+      }
+    };
+    fetchChildren();
+  }, [parentId, preSelectedChildId]);
 
-  const loadQuestions = async () => {
-    setLoading(true);
+  const loadQuestionsForChild = async (childId: number) => {
+    setLoadingQuestions(true);
     setError('');
+    setSuccess(null);
+    setAnswers({});
     try {
-      const data = await behaviorApi.getPersonalizedQuestions(parentId, 5);
-      setQuestions(data);
+      const data = await behaviorApi.getChildQuestions(childId, 5);
+      setQuestions(data || []);
     } catch (err: any) {
       if (err.response?.status === 404) {
-        setError('Please add children to your profile first');
+        setQuestions([]);
+        setError('No questions available for this child. Please choose another.');
       } else {
         setError('Unable to load questions. Check your connection.');
       }
     } finally {
-      setLoading(false);
+      setLoadingQuestions(false);
     }
   };
 
-  const handleAnswerSelect = (childId: number, questionId: number, answer: string) => {
-    const key = `${childId}_${questionId}`;
-    setAnswers((prev) => ({ ...prev, [key]: answer }));
+  const handleChildSelect = (childId: number) => {
+    setSelectedChildId(childId);
+    loadQuestionsForChild(childId);
+  };
+
+  const handleAnswerSelect = (questionId: number, answer: string) => {
+    setAnswers((prev) => ({ ...prev, [questionId]: answer }));
   };
 
   const getProgress = () => {
@@ -49,35 +81,35 @@ export function BehaviorTrackingPopup({ parentId, onClose }: BehaviorPopupProps)
     return { answered, total, percentage: total > 0 ? (answered / total) * 100 : 0 };
   };
 
-  const isAllAnswered = () => {
-    return questions.length > 0 && Object.keys(answers).length === questions.length;
-  };
+  const isAllAnswered = () => questions.length > 0 && Object.keys(answers).length === questions.length;
 
   const handleSubmit = async () => {
-    if (!isAllAnswered()) return;
-
+    if (!selectedChildId || !isAllAnswered()) return;
     setSubmitting(true);
     setError('');
-
     try {
-      // Convert answers to API format
-      const responses: behaviorApi.BehaviorResponse[] = Object.entries(answers).map(
-        ([key, answer]) => {
-          const [childId, questionId] = key.split('_').map(Number);
-          return { child_id: childId, question_id: questionId, answer };
-        }
-      );
-
-      await behaviorApi.submitBehaviorResponses(responses);
+      const responses = Object.entries(answers).map(([qid, answer]) => ({
+        question_id: Number(qid),
+        answer,
+      }));
+      const result = await behaviorApi.submitChildBehaviorResponses(selectedChildId, responses);
       behaviorApi.markBehaviorCheckInComplete();
       behaviorApi.clearReminder();
-      
-      setSuccess(true);
+      setSuccess({ score: result.total_score, total: result.total_questions });
+      // After showing result, reset to allow next child selection
       setTimeout(() => {
-        onClose();
-      }, 1500);
+        setSelectedChildId(null);
+        setQuestions([]);
+        setAnswers({});
+        setSuccess(null);
+        // Keep popup open so parent can select next child
+      }, 1800);
     } catch (err: any) {
-      setError('Failed to save responses. Please try again.');
+      if (err.response?.status === 404) {
+        setError('No questions available for this child. Please choose another.');
+      } else {
+        setError('Failed to save responses. Please try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -109,12 +141,12 @@ export function BehaviorTrackingPopup({ parentId, onClose }: BehaviorPopupProps)
               📋 Daily Behavior Check-in
             </h2>
             <p className="text-gray-600 text-sm">
-              Help us understand your children better by answering these quick questions
+              Select one child at a time and answer quick questions
             </p>
           </div>
 
           {/* Progress */}
-          {!loading && questions.length > 0 && (
+          {!loadingChildren && !loadingQuestions && selectedChildId && questions.length > 0 && (
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-gray-600">
@@ -135,39 +167,70 @@ export function BehaviorTrackingPopup({ parentId, onClose }: BehaviorPopupProps)
 
           {/* Content */}
           <div className="mb-6 max-h-[60vh] overflow-y-auto">
-            {loading ? (
+            {loadingChildren ? (
               <div className="text-center py-12">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#A8E6CF] mx-auto mb-4" />
-                <p className="text-gray-600">Loading questions...</p>
+                <p className="text-gray-600">Loading children...</p>
               </div>
             ) : error ? (
               <div className="text-center py-12">
                 <div className="text-red-600 mb-4 text-5xl">⚠️</div>
                 <p className="text-red-600 mb-4">{error}</p>
-                <Button onClick={loadQuestions} className="bg-[#A8E6CF] hover:bg-[#8BD4AE] text-[#2D5F3F]">
-                  Retry
-                </Button>
+                {!selectedChildId ? (
+                  <Button onClick={() => window.location.reload()} className="bg-[#A8E6CF] hover:bg-[#8BD4AE] text-[#2D5F3F]">Retry</Button>
+                ) : (
+                  <Button onClick={() => selectedChildId && loadQuestionsForChild(selectedChildId)} className="bg-[#A8E6CF] hover:bg-[#8BD4AE] text-[#2D5F3F]">Retry</Button>
+                )}
               </div>
             ) : success ? (
               <div className="text-center py-12">
                 <div className="text-green-600 mb-4 text-5xl">✅</div>
-                <p className="text-green-600 font-medium text-lg">Responses saved successfully!</p>
-                <p className="text-gray-600 text-sm mt-2">Thank you for completing today's check-in</p>
+                <p className="text-green-600 font-medium text-lg">Score: {success.score} / {success.total}</p>
+                <p className="text-gray-600 text-sm mt-2">Great! You can now choose another child.</p>
+              </div>
+            ) : !selectedChildId ? (
+              <div>
+                {children.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="text-gray-400 mb-4 text-5xl">�👦</div>
+                    <p className="text-gray-600 mb-2">No children found</p>
+                    <p className="text-sm text-gray-500">Please add children to your profile first</p>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-gray-700 mb-3">Choose a child to begin:</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {Array.isArray(children) && children.map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => handleChildSelect(c.id)}
+                          className="p-4 border-2 border-gray-200 rounded-xl hover:border-[#A8E6CF] text-left"
+                        >
+                          <div className="font-medium text-[#2D5F3F]">{c.name}</div>
+                          {c.age ? <div className="text-xs text-gray-500">Age {c.age}</div> : null}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : loadingQuestions ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#A8E6CF] mx-auto mb-4" />
+                <p className="text-gray-600">Loading questions...</p>
               </div>
             ) : questions.length === 0 ? (
               <div className="text-center py-12">
                 <div className="text-gray-400 mb-4 text-5xl">📋</div>
-                <p className="text-gray-600 mb-2">No questions available</p>
-                <p className="text-sm text-gray-500">Please add children to your profile first</p>
+                <p className="text-gray-600 mb-2">No questions available for this child</p>
+                <Button onClick={() => setSelectedChildId(null)} className="bg-[#A8E6CF] hover:bg-[#8BD4AE] text-[#2D5F3F]">Choose another child</Button>
               </div>
             ) : (
               <div className="space-y-4">
-                {questions.map((question, index) => {
-                  const key = `${question.child_id}_${question.question_id}`;
-                  const selectedAnswer = answers[key];
-
+                {Array.isArray(questions) && questions.map((question, index) => {
+                  const selectedAnswer = answers[question.question_id];
                   return (
-                    <Card key={key} className="p-4 border-2 border-gray-100 hover:border-[#A8E6CF] transition-colors">
+                    <Card key={question.question_id} className="p-4 border-2 border-gray-100 hover:border-[#A8E6CF] transition-colors">
                       <div className="mb-3">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs font-medium text-gray-500">
@@ -183,12 +246,10 @@ export function BehaviorTrackingPopup({ parentId, onClose }: BehaviorPopupProps)
                       </div>
 
                       <div className="flex flex-wrap gap-2">
-                        {question.options.map((option) => (
+                        {Array.isArray(question.options) && question.options.map((option) => (
                           <button
                             key={option}
-                            onClick={() =>
-                              handleAnswerSelect(question.child_id, question.question_id, option)
-                            }
+                            onClick={() => handleAnswerSelect(question.question_id, option)}
                             className={`px-4 py-2 rounded-lg border-2 transition-all ${
                               selectedAnswer === option
                                 ? 'border-[#A8E6CF] bg-[#A8E6CF] text-[#2D5F3F] font-medium'
@@ -207,7 +268,7 @@ export function BehaviorTrackingPopup({ parentId, onClose }: BehaviorPopupProps)
           </div>
 
           {/* Footer Actions */}
-          {!loading && !error && !success && questions.length > 0 && (
+          {!loadingChildren && !loadingQuestions && !error && !success && selectedChildId && questions.length > 0 && (
             <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 variant="outline"

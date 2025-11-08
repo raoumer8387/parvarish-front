@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from './ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Send, Mic, Bot, User } from 'lucide-react';
+import { Send, Mic, Bot, User, Loader2 } from 'lucide-react';
 import { ScrollArea } from './ui/scroll-area';
+import * as chatApi from '../api/chatApi';
+import * as behaviorApi from '../api/behaviorApi';
 
 interface Message {
   id: number;
@@ -14,45 +16,40 @@ interface Message {
 }
 
 export function ChatbotInterface() {
-  const [selectedChild, setSelectedChild] = useState('Ali');
+  const [selectedChildId, setSelectedChildId] = useState<number | null>(null);
+  const [children, setChildren] = useState<behaviorApi.ChildInfo[]>([]);
+  const [loadingChildren, setLoadingChildren] = useState(true);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
       text: 'Assalamu Alaikum! I am your Parvarish AI assistant. How can I help you with your parenting journey today?',
       sender: 'ai',
-      timestamp: '10:30 AM',
-    },
-    {
-      id: 2,
-      text: 'My son Ali has been showing impatience lately. What Islamic advice can you give me?',
-      sender: 'user',
-      timestamp: '10:32 AM',
-    },
-    {
-      id: 3,
-      text: `Wa Alaikum Assalam! Patience (Sabr) is a fundamental virtue in Islam. Here's some guidance:
-
-📖 Quranic Wisdom:
-"And seek help through patience and prayer" (Quran 2:45)
-
-🌟 Practical Steps for Ali:
-1. Teach him the story of Prophet Ayub (AS) and his patience
-2. Practice breathing exercises when he feels frustrated
-3. Reward patient behavior with positive reinforcement
-4. Model patience in your own actions
-
-💡 Activity Suggestion:
-Try the "Patience Building" game in our activities section - it helps children understand delayed gratification through fun scenarios.
-
-Would you like specific duas to teach Ali about patience?`,
-      sender: 'ai',
-      timestamp: '10:33 AM',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
   const [inputMessage, setInputMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSendMessage = () => {
-    if (!inputMessage.trim()) return;
+  // Fetch children list on mount
+  useEffect(() => {
+    const fetchChildren = async () => {
+      setLoadingChildren(true);
+      try {
+        const data = await behaviorApi.getParentChildren();
+        const childrenArray = Array.isArray(data) ? data : (data as any)?.children || [];
+        setChildren(childrenArray);
+      } catch (err) {
+        console.error('Failed to load children:', err);
+        setChildren([]);
+      } finally {
+        setLoadingChildren(false);
+      }
+    };
+    fetchChildren();
+  }, []);
+
+  const handleSendMessage = async () => {
+    if (!inputMessage.trim() || isLoading) return;
 
     const newUserMessage: Message = {
       id: messages.length + 1,
@@ -62,18 +59,50 @@ Would you like specific duas to teach Ali about patience?`,
     };
 
     setMessages([...messages, newUserMessage]);
+    const userInput = inputMessage;
     setInputMessage('');
+    setIsLoading(true);
 
-    // Simulate AI response
-    setTimeout(() => {
+    try {
+      // Send message with optional child context
+      const response = await chatApi.sendChatMessage(userInput, selectedChildId);
+      
       const aiResponse: Message = {
         id: messages.length + 2,
-        text: `I understand your concern about ${selectedChild}. Let me provide you with some Islamic guidance and practical advice based on our teachings...`,
+        text: response.response,
         sender: 'ai',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
+      
       setMessages((prev) => [...prev, aiResponse]);
-    }, 1000);
+    } catch (err) {
+      console.error('Failed to send message:', err);
+      const errorMessage: Message = {
+        id: messages.length + 2,
+        text: 'Sorry, I encountered an error. Please try again.',
+        sender: 'ai',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const getPlaceholderText = () => {
+    const selectedChild = children.find(c => c.id === selectedChildId);
+    if (selectedChild) {
+      return `Ask about ${selectedChild.name}'s development...`;
+    }
+    return 'Ask for Islamic parenting advice...';
+  };
+
+  const getContextBadge = () => {
+    const selectedChild = children.find(c => c.id === selectedChildId);
+    if (selectedChild) {
+      return `💬 About ${selectedChild.name}`;
+    }
+    return '💬 General';
   };
 
   return (
@@ -83,17 +112,31 @@ Would you like specific duas to teach Ali about patience?`,
         <h1 className="text-[#2D5F3F] mb-3 sm:mb-4 text-2xl sm:text-3xl lg:text-4xl">AI Parenting Assistant</h1>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
           <label className="text-gray-700 text-sm sm:text-base">Discussing about:</label>
-          <Select value={selectedChild} onValueChange={setSelectedChild}>
+          <Select
+            value={selectedChildId?.toString() || 'general'}
+            onValueChange={(value: string) => setSelectedChildId(value === 'general' ? null : parseInt(value))}
+          >
             <SelectTrigger className="w-full sm:w-48 rounded-xl bg-white">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Ali">Ali (8 years)</SelectItem>
-              <SelectItem value="Umer">Umer (6 years)</SelectItem>
-              <SelectItem value="Usman">Usman (10 years)</SelectItem>
-              <SelectItem value="General">General Advice</SelectItem>
+              <SelectItem value="general">General Advice</SelectItem>
+              {children.map((child) => (
+                <SelectItem key={child.id} value={child.id.toString()}>
+                  {child.name} {child.age ? `(${child.age} years)` : ''}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
+          
+          {/* Context Badge */}
+          <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+            selectedChildId 
+              ? 'bg-blue-100 text-blue-700' 
+              : 'bg-gray-100 text-gray-700'
+          }`}>
+            {getContextBadge()}
+          </div>
         </div>
       </div>
 
@@ -146,20 +189,25 @@ Would you like specific duas to teach Ali about patience?`,
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-              placeholder="Ask for Islamic parenting advice..."
+              placeholder={getPlaceholderText()}
               className="flex-1 rounded-xl text-sm sm:text-base"
             />
             <Button
               onClick={handleSendMessage}
+              disabled={isLoading || !inputMessage.trim()}
               className="bg-[#A8E6CF] hover:bg-[#8BD4AE] text-[#2D5F3F] rounded-xl px-3 sm:px-6"
             >
-              <Send className="h-4 w-4 sm:h-5 sm:w-5" />
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 sm:h-5 sm:w-5" />
+              )}
             </Button>
             <Button
               variant="outline"
               className="rounded-xl px-3 sm:px-6 border-2 border-[#B3E5FC] text-[#1E4F6F] hover:bg-[#B3E5FC]/10"
-            >
-              <Mic className="h-4 w-4 sm:h-5 sm:w-5" />
+            >{/*
+              <Mic className="h-4 w-4 sm:h-5 sm:w-5" />*/}
             </Button>
           </div>
           <p className="text-xs text-gray-500 mt-2 text-center">

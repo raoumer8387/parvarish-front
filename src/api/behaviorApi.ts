@@ -1,36 +1,4 @@
-import axios from 'axios';
-import { API_BASE_URL } from './config';
-
-// Create axios instance with interceptor for session expiration
-const axiosInstance = axios.create({
-  baseURL: API_BASE_URL,
-});
-
-// Request interceptor to add auth token
-axiosInstance.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-// Response interceptor to handle 401 errors (session expired)
-axiosInstance.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response && error.response.status === 401) {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('user_info');
-      localStorage.removeItem('onboarding_completed');
-      window.location.href = '/';
-    }
-    return Promise.reject(error);
-  }
-);
+import axiosInstance from './axiosInstance';
 
 export interface BehaviorQuestion {
   child_id: number;
@@ -55,13 +23,68 @@ export interface BehaviorHistoryItem {
   timestamp: string;
 }
 
+// Parent's children basic info
+export interface ChildInfo {
+  id: number;
+  name: string;
+  age?: number;
+}
+
+// Check-in status per child
+export interface ChildCheckInStatus {
+  child_id: number;
+  child_name: string;
+  needs_check_in: boolean;
+}
+
+export interface CheckInStatusResponse {
+  children: ChildCheckInStatus[];
+}
+
+// Child behavior stats
+export interface ChildStats {
+  child_id: number;
+  behavior_level: number;
+  islamic_knowledge: number;
+  categories?: Record<string, number>;
+}
+
+export const getParentChildren = async (): Promise<ChildInfo[]> => {
+  const { data } = await axiosInstance.get('/api/v1/parent/children');
+  return data;
+};
+
+// Get check-in status for all children
+export const getCheckInStatus = async (): Promise<CheckInStatusResponse> => {
+  const { data } = await axiosInstance.get('/api/v1/behavior/check-in-status');
+  return data;
+};
+
+// Get behavior stats for a specific child
+export const getChildStats = async (childId: number): Promise<ChildStats> => {
+  const { data } = await axiosInstance.get(`/api/v1/behavior/stats/${childId}`);
+  return data;
+};
+
 // Get personalized behavior questions for parent's children
 export const getPersonalizedQuestions = async (
-  parentId: number,
+  _parentId: number,
   totalQuestions: number = 5
 ): Promise<BehaviorQuestion[]> => {
   const { data } = await axiosInstance.get(
-    `/api/v1/behavior/questions/personalized/${parentId}`,
+    `/api/v1/behavior/questions/personalized`,
+    { params: { total_questions: totalQuestions } }
+  );
+  return data;
+};
+
+// One-child-at-a-time: fetch questions for a single child
+export const getChildQuestions = async (
+  childId: number,
+  totalQuestions: number = 5
+): Promise<BehaviorQuestion[]> => {
+  const { data } = await axiosInstance.get(
+    `/api/v1/behavior/questions/${childId}`,
     { params: { total_questions: totalQuestions } }
   );
   return data;
@@ -70,6 +93,29 @@ export const getPersonalizedQuestions = async (
 // Submit behavior responses
 export const submitBehaviorResponses = async (responses: BehaviorResponse[]) => {
   const { data } = await axiosInstance.post('/api/v1/behavior/submit-responses', {
+    responses,
+  });
+  return data;
+};
+
+// Submit responses for a single child (new flow)
+export interface ChildBehaviorSubmitPayload {
+  child_id: number;
+  responses: { question_id: number; answer: string }[];
+}
+
+export interface ChildBehaviorSubmitResult {
+  child_id: number;
+  total_score: number;
+  total_questions: number;
+}
+
+export const submitChildBehaviorResponses = async (
+  childId: number,
+  responses: { question_id: number; answer: string }[]
+): Promise<ChildBehaviorSubmitResult> => {
+  const { data } = await axiosInstance.post('/api/v1/behavior/submit-responses', {
+    child_id: childId,
     responses,
   });
   return data;
