@@ -11,6 +11,7 @@ import { GameScreen } from './components/GameScreen';
 import { ProgressDashboard } from './components/ProgressDashboard';
 import { SettingsPage } from './components/SettingsPage';
 import ParentOnboarding from './pages/ParentOnboarding.jsx';
+import { Toaster } from './components/ui/toaster';
 
 type UserType = 'parent' | 'child' | null;
 type Page = 'dashboard' | 'profiles' | 'progress' | 'chatbot' | 'activities' | 'settings' | 'games' | 'game';
@@ -168,6 +169,7 @@ export default function App() {
           {currentPage === 'activities' && <ActivitiesPage onStartActivity={handleStartActivity} />}
           {currentPage === 'settings' && <SettingsPage />}
         </div>
+        <Toaster />
       </div>
     </ErrorBoundary>
   );

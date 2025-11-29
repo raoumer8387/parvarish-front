@@ -52,7 +52,7 @@ export function BehaviorTrackingPopup({ parentId, onClose, preSelectedChildId }:
     setSuccess(null);
     setAnswers({});
     try {
-      const data = await behaviorApi.getChildQuestions(childId, 5);
+      const data = await behaviorApi.getChildQuestions(childId);
       setQuestions(data || []);
     } catch (err: any) {
       if (err.response?.status === 404) {
@@ -124,8 +124,9 @@ export function BehaviorTrackingPopup({ parentId, onClose, preSelectedChildId }:
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
-      <Card className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl my-8">
-        <div className="relative p-6">
+      <Card className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl my-8 flex flex-col">
+        {/* Header and Close Button */}
+        <div className="relative p-6 border-b border-gray-200">
           {/* Close Button */}
           <button
             onClick={onClose}
@@ -136,15 +137,18 @@ export function BehaviorTrackingPopup({ parentId, onClose, preSelectedChildId }:
           </button>
 
           {/* Header */}
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-[#2D5F3F] mb-2 flex items-center gap-2">
+          <div className="mb-2">
+            <h2 className="text-2xl font-bold text-[#2D5F3F] flex items-center gap-2">
               📋 Daily Behavior Check-in
             </h2>
             <p className="text-gray-600 text-sm">
               Select one child at a time and answer quick questions
             </p>
           </div>
+        </div>
 
+        {/* Scrollable Content Area */}
+        <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(70vh - 100px)' }}>
           {/* Progress */}
           {!loadingChildren && !loadingQuestions && selectedChildId && questions.length > 0 && (
             <div className="mb-6">
@@ -166,7 +170,7 @@ export function BehaviorTrackingPopup({ parentId, onClose, preSelectedChildId }:
           )}
 
           {/* Content */}
-          <div className="mb-6 max-h-[60vh] overflow-y-auto">
+          <div className="mb-6">
             {loadingChildren ? (
               <div className="text-center py-12">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#A8E6CF] mx-auto mb-4" />
@@ -266,8 +270,10 @@ export function BehaviorTrackingPopup({ parentId, onClose, preSelectedChildId }:
               </div>
             )}
           </div>
+        </div>
 
-          {/* Footer Actions */}
+        {/* Footer Actions */}
+        <div className="p-6 border-t border-gray-200">
           {!loadingChildren && !loadingQuestions && !error && !success && selectedChildId && questions.length > 0 && (
             <div className="flex flex-col sm:flex-row gap-3">
               <Button

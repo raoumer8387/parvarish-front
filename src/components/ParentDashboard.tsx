@@ -6,6 +6,7 @@ import { Heart, Clock, Star, CheckCircle, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { BehaviorTrackingPopup } from './BehaviorTrackingPopup';
 import * as behaviorApi from '../api/behaviorApi';
+import TaskList from './TaskList';
 
 interface ChildWithStats extends behaviorApi.ChildInfo {
   behaviorLevel?: number;
@@ -28,6 +29,7 @@ export function ParentDashboard() {
   const [showBehaviorPopup, setShowBehaviorPopup] = useState(false);
   const [selectedChildForCheckIn, setSelectedChildForCheckIn] = useState<number | null>(null);
   const [parentId, setParentId] = useState<number | null>(null);
+  const [selectedChildForTasks, setSelectedChildForTasks] = useState<number | null>(null);
 
   // Fetch children list, their stats, and check-in status
   useEffect(() => {
@@ -38,6 +40,10 @@ export function ParentDashboard() {
         const childrenList = await behaviorApi.getParentChildren();
         const childrenArray = Array.isArray(childrenList) ? childrenList : (childrenList as any)?.children || [];
         
+        if (childrenArray.length > 0) {
+            setSelectedChildForTasks(childrenArray[0].id);
+        }
+
         // Get check-in status for all children
         let checkInStatusMap = new Map<number, boolean>();
         try {
@@ -183,7 +189,11 @@ export function ParentDashboard() {
           </div>
         ) : (
           children.map((child) => (
-            <Card key={child.id} className="p-6 hover:shadow-xl transition-shadow rounded-3xl border-2 border-[#A8E6CF]/20 relative">
+            <Card 
+                key={child.id} 
+                className={`p-6 hover:shadow-xl transition-shadow rounded-3xl border-2 ${selectedChildForTasks === child.id ? 'border-[#A8E6CF]' : 'border-transparent'}`}
+                onClick={() => setSelectedChildForTasks(child.id)}
+            >
               {/* Check-in Status Badge */}
               {child.needsCheckIn ? (
                 <div className="absolute top-4 right-4 flex items-center gap-2 bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-medium">
@@ -289,8 +299,11 @@ export function ParentDashboard() {
         )}
       </div>
 
+      {/* Task List */}
+      {selectedChildForTasks && <TaskList childId={selectedChildForTasks} />}
+
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mt-8">
         <Card className="p-4 sm:p-6 bg-gradient-to-br from-[#A8E6CF] to-[#8BD4AE] text-white rounded-2xl">
           <p className="text-white/90 mb-2 text-sm sm:text-base">Total Activities</p>
           <p className="text-2xl sm:text-3xl">40</p>

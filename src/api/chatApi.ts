@@ -21,3 +21,31 @@ export const sendChatMessage = async (
   });
   return data;
 };
+
+// New interfaces for chat history
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+  child_id: number | null;
+}
+
+export interface ChatHistoryResponse {
+  messages: ChatMessage[];
+}
+
+// Get chat history, with optional filtering by child
+export const getChatHistory = async (
+  childId?: number | null,
+  limit: number = 100
+): Promise<ChatHistoryResponse> => {
+  const params: any = { limit };
+  if (childId) {
+    params.child_id = childId;
+  }
+
+  const { data } = await axiosInstance.get<ChatHistoryResponse>('/api/v1/chat/history', {
+    params,
+  });
+  return data;
+};

@@ -7,12 +7,13 @@ import { Send, Mic, Bot, User, Loader2 } from 'lucide-react';
 import { ScrollArea } from './ui/scroll-area';
 import * as chatApi from '../api/chatApi';
 import * as behaviorApi from '../api/behaviorApi';
+import TaskGeneration from './TaskGeneration';
 
 interface Message {
-  id: number;
-  text: string;
-  sender: 'user' | 'ai';
+  role: 'user' | 'ai';
+  content: string;
   timestamp: string;
+  tags?: string[];
 }
 
 export function ChatbotInterface() {
@@ -21,14 +22,14 @@ export function ChatbotInterface() {
   const [loadingChildren, setLoadingChildren] = useState(true);
   const [messages, setMessages] = useState<Message[]>([
     {
-      id: 1,
-      text: 'Assalamu Alaikum! I am your Parvarish AI assistant. How can I help you with your parenting journey today?',
-      sender: 'ai',
+      role: 'ai',
+      content: 'Assalamu Alaikum! I am your Parvarish AI assistant. How can I help you with your parenting journey today?',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [lastAiMessage, setLastAiMessage] = useState<Message | null>(null);
 
   // Fetch children list on mount
   useEffect(() => {
@@ -48,13 +49,47 @@ export function ChatbotInterface() {
     fetchChildren();
   }, []);
 
+  // Fetch chat history when selectedChildId changes
+  useEffect(() => {
+    const fetchHistory = async () => {
+      setIsLoading(true);
+      try {
+        const historyData = await chatApi.getChatHistory(selectedChildId);
+        const formattedMessages: Message[] = historyData.messages.map(msg => ({
+          role: msg.role === 'user' ? 'user' : 'ai',
+          content: msg.content,
+          timestamp: new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }));
+        
+        if (formattedMessages.length > 0) {
+          setMessages(formattedMessages);
+        } else {
+          // Set initial message if history is empty
+          setMessages([
+            {
+              role: 'ai',
+              content: 'Assalamu Alaikum! I am your Parvarish AI assistant. How can I help you with your parenting journey today?',
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            },
+          ]);
+        }
+      } catch (error) {
+        console.error('Failed to load chat history:', error);
+        // Optionally show an error message in the chat
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchHistory();
+  }, [selectedChildId]);
+
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
 
     const newUserMessage: Message = {
-      id: messages.length + 1,
-      text: inputMessage,
-      sender: 'user',
+      role: 'user',
+      content: inputMessage,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
@@ -62,25 +97,26 @@ export function ChatbotInterface() {
     const userInput = inputMessage;
     setInputMessage('');
     setIsLoading(true);
+    setLastAiMessage(null);
 
     try {
       // Send message with optional child context
       const response = await chatApi.sendChatMessage(userInput, selectedChildId);
       
       const aiResponse: Message = {
-        id: messages.length + 2,
-        text: response.response,
-        sender: 'ai',
+        role: 'ai',
+        content: response.response,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        tags: (response as any).tags, // Assuming tags might come back
       };
       
       setMessages((prev) => [...prev, aiResponse]);
+      setLastAiMessage(aiResponse);
     } catch (err) {
       console.error('Failed to send message:', err);
       const errorMessage: Message = {
-        id: messages.length + 2,
-        text: 'Sorry, I encountered an error. Please try again.',
-        sender: 'ai',
+        role: 'ai',
+        content: 'Sorry, I encountered an error. Please try again.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -144,37 +180,48 @@ export function ChatbotInterface() {
       <Card className="flex-1 flex flex-col rounded-3xl overflow-hidden shadow-xl">
         <ScrollArea className="flex-1 p-6">
           <div className="space-y-4">
-            {messages.map((message) => (
+            {messages.map((message, index) => (
               <div
-                key={message.id}
-                className={`flex gap-3 ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                key={index}
+                className="flex flex-col"
               >
-                {message.sender === 'ai' && (
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#A8E6CF] to-[#B3E5FC] flex items-center justify-center flex-shrink-0">
-                    <Bot className="h-5 w-5 text-white" />
-                  </div>
-                )}
-                
-                <div
-                  className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-3 sm:p-4 ${
-                    message.sender === 'user'
-                      ? 'bg-[#A8E6CF] text-[#2D5F3F]'
-                      : 'bg-white border-2 border-gray-100'
-                  }`}
-                >
-                  <p className="whitespace-pre-line text-sm sm:text-base">{message.text}</p>
-                  <p
-                    className={`text-xs mt-2 ${
-                      message.sender === 'user' ? 'text-[#2D5F3F]/70' : 'text-gray-500'
+                <div className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {message.role === 'ai' && (
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#A8E6CF] to-[#B3E5FC] flex items-center justify-center flex-shrink-0">
+                        <Bot className="h-5 w-5 text-white" />
+                    </div>
+                    )}
+                    
+                    <div
+                    className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-3 sm:p-4 ${
+                        message.role === 'user'
+                        ? 'bg-[#A8E6CF] text-[#2D5F3F]'
+                        : 'bg-white border-2 border-gray-100'
                     }`}
-                  >
-                    {message.timestamp}
-                  </p>
-                </div>
+                    >
+                    <p className="whitespace-pre-line text-sm sm:text-base">{message.content}</p>
+                    <p
+                        className={`text-xs mt-2 ${
+                        message.role === 'user' ? 'text-[#2D5F3F]/70' : 'text-gray-500'
+                        }`}
+                    >
+                        {message.timestamp}
+                    </p>
+                    </div>
 
-                {message.sender === 'user' && (
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#B3E5FC] to-[#81D4FA] flex items-center justify-center flex-shrink-0">
-                    <User className="h-5 w-5 text-white" />
+                    {message.role === 'user' && (
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#B3E5FC] to-[#81D4FA] flex items-center justify-center flex-shrink-0">
+                        <User className="h-5 w-5 text-white" />
+                    </div>
+                    )}
+                </div>
+                {lastAiMessage && lastAiMessage.content === message.content && (
+                  <div className="ml-12 mt-2">
+                    <TaskGeneration 
+                      childId={selectedChildId}
+                      chatbotResponse={lastAiMessage.content}
+                      chatbotTags={lastAiMessage.tags}
+                    />
                   </div>
                 )}
               </div>
