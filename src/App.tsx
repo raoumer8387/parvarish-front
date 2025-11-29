@@ -162,7 +162,7 @@ export default function App() {
           
           {/* Page Content */}
           {currentPage === 'dashboard' && <ParentDashboard />}
-          {currentPage === 'progress' && <ProgressDashboard />}
+          {/*currentPage === 'progress' && <ProgressDashboard />*/}
           {currentPage === 'chatbot' && <ChatbotInterface />}
           {currentPage === 'games' && <GamesPage onStartGame={handleStartGame} />}
           {currentPage === 'activities' && <ActivitiesPage onStartActivity={handleStartActivity} />}
