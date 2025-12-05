@@ -80,12 +80,11 @@ export const getPersonalizedQuestions = async (
 
 // One-child-at-a-time: fetch questions for a single child
 export const getChildQuestions = async (
-  childId: number,
-  totalQuestions: number = 5
+  childId: number
 ): Promise<BehaviorQuestion[]> => {
   const { data } = await axiosInstance.get(
     `/api/v1/behavior/questions/${childId}`,
-    { params: { total_questions: totalQuestions } }
+    { params: { all_aspects: true, per_category: 1 } }
   );
   return data;
 };
@@ -180,4 +179,10 @@ export const setReminder = () => {
 // Clear reminder
 export const clearReminder = () => {
   localStorage.removeItem('behaviorCheckInReminder');
+};
+
+// Get full-coverage daily questions for a child
+export const getFullCoverageDailyQuestions = async (childId: number, perCategory: number = 1) => {
+  const response = await axiosInstance.get(`/api/v1/behavior/questions/${childId}?all_aspects=true&per_category=${perCategory}`);
+  return response.data;
 };

@@ -216,13 +216,17 @@ export function SettingsPage() {
     if (!confirm('Are you sure you want to delete this child? This action cannot be undone.')) {
       return;
     }
+    setChildrenError(''); // Clear previous errors
     try {
       await settingsApi.deleteChild(childId);
       // Refetch children
       const data = await settingsApi.getAllChildren();
       setChildren(data.children || []);
-    } catch (err) {
-      alert('Failed to delete child');
+    } catch (err: any) {
+      console.error('Delete child error:', err); // Log the full error
+      const errorMessage = err?.response?.data?.detail || err?.response?.data?.message || 'Failed to delete child. Please try again.';
+      setChildrenError(errorMessage);
+      alert(errorMessage); // Also alert the user
     }
   };
 
@@ -318,16 +322,6 @@ export function SettingsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="father_age">Father Age</Label>
-                  <Input
-                    id="father_age"
-                    type="number"
-                    value={profileEdit.father_age || ''}
-                    onChange={(e) => handleProfileChange('father_age', e.target.value)}
-                    className="rounded-xl"
-                  />
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor="mother_age">Mother Age</Label>
                   <Input
                     id="mother_age"
@@ -383,6 +377,8 @@ export function SettingsPage() {
             </Button>
           </div>
 
+          {childrenError && <div className="text-red-600 mb-4">{childrenError}</div>}
+
           <div className="space-y-4">
             {children.map((child) => (
               <div
@@ -420,7 +416,7 @@ export function SettingsPage() {
                   key={childModalKey}
                   index={0}
                   child={childForm}
-                  onChange={(_idx, updated) => setChildForm(updated)}
+                  onChange={(_idx: number, updated: any) => setChildForm(updated)}
                   onRemove={editingChild ? undefined : null}
                   hideHeader={!editingChild}
                 />
