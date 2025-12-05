@@ -8,10 +8,14 @@ import { ChatbotInterface } from './components/ChatbotInterface';
 import { ActivitiesPage } from './components/ActivitiesPage';
 import { GamesPage } from './components/GamesPage';
 import { GameScreen } from './components/GameScreen';
-import { ProgressDashboard } from './components/ProgressDashboard';
 import { SettingsPage } from './components/SettingsPage';
 import ParentOnboarding from './pages/ParentOnboarding.jsx';
 import { Toaster } from './components/ui/toaster';
+import MemoryGame from './components/games/MemoryGame';
+import MoodPickerGame from './components/games/MoodPickerGame';
+import ScenarioGame from './components/games/ScenarioGame';
+import IslamicQuizGame from './components/games/IslamicQuizGame';
+import { getUserType } from './api/auth';
 
 type UserType = 'parent' | 'child' | null;
 type Page = 'dashboard' | 'profiles' | 'progress' | 'chatbot' | 'activities' | 'settings' | 'games' | 'game';
@@ -21,6 +25,7 @@ export default function App() {
   const [userType, setUserType] = useState<UserType>(null);
   const [currentPage, setCurrentPage] = useState<Page>('chatbot');
   const [currentActivity, setCurrentActivity] = useState<string | null>(null);
+  const [path, setPath] = useState<string>(window.location.pathname);
 
   // Check for existing token on mount and handle Google OAuth callback
   useEffect(() => {
@@ -87,20 +92,67 @@ export default function App() {
         } else {
           // Child user - start at games page
           setCurrentPage('games');
+          // Ensure child is redirected to /child/games
+          if (window.location.pathname !== '/child/games') {
+            window.history.replaceState({}, '', '/child/games');
+            setPath('/child/games');
+          }
         }
       }
     }
   }, []);
+
+  // Simple path-based routing with role gating
+  useEffect(() => {
+    const handlePop = () => setPath(window.location.pathname);
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, []);
+
+  useEffect(() => {
+    // Enforce role-based access by path
+    const t = userType ?? getUserType();
+    if (!t) return; // not logged in handled elsewhere
+    if (t === 'child') {
+      if (!path.startsWith('/child')) {
+        if (window.location.pathname !== '/child/games') {
+          window.history.replaceState({}, '', '/child/games');
+          setPath('/child/games');
+        }
+      }
+    } else if (t === 'parent') {
+      if (path.startsWith('/child')) {
+        // Redirect parent away from child-only routes
+        window.history.replaceState({}, '', '/');
+        setPath('/');
+      }
+    }
+  }, [path, userType]);
 
   const handleLogin = (type: 'parent' | 'child') => {
     setUserType(type);
     setIsLoggedIn(true);
     // Children start at games page, parents at chatbot
     setCurrentPage(type === 'child' ? 'games' : 'chatbot');
+    
+    // Redirect child to /child/games route
+    if (type === 'child') {
+      window.history.pushState({}, '', '/child/games');
+      setPath('/child/games');
+    }
   };
 
   const handleNavigate = (page: string) => {
     setCurrentPage(page as Page);
+    // Update path for child games hub for consistency
+    if (userType === 'child') {
+      if (page === 'games') {
+        if (window.location.pathname !== '/child/games') {
+          window.history.pushState({}, '', '/child/games');
+          setPath('/child/games');
+        }
+      }
+    }
   };
 
   const handleStartActivity = (activityId: string) => {
@@ -111,6 +163,15 @@ export default function App() {
   const handleStartGame = (gameId: string) => {
     setCurrentActivity(gameId);
     setCurrentPage('game');
+    if (userType === 'child') {
+      const route =
+        gameId === 'memory' ? '/child/games/memory' :
+        gameId === 'mood' ? '/child/games/mood' :
+        gameId === 'scenario' ? '/child/games/scenario' :
+        gameId === 'islamic-quiz' ? '/child/games/islamic-quiz' : '/child/games';
+      window.history.pushState({}, '', route);
+      setPath(route);
+    }
   };
 
   const handleBackFromGame = () => {
@@ -140,8 +201,98 @@ export default function App() {
     return <LoginPage onLogin={handleLogin} />;
   }
 
-  // If in game mode, show full-screen game
-  if (currentPage === 'game' && currentActivity) {
+  // Child routes rendering
+  if (userType === 'child') {
+    if (path === '/child/games') {
+      return (
+        <ErrorBoundary>
+          <div className="flex min-h-screen bg-gradient-to-br from-[#FFF8E1] to-white">
+            <AppSidebar currentPage={'games'} onNavigate={handleNavigate} userType={'child'} />
+            <div className="flex-1 w-full lg:ml-64 overflow-x-hidden">
+              <div className="w-full flex justify-end p-4">
+                <Button variant="outline" onClick={handleLogout} className="rounded-lg">Logout</Button>
+              </div>
+              <GamesPage onStartGame={(id) => {
+                // map internal ids to routes (support both old and new)
+                const map: Record<string, string> = {
+                  memory: 'memory',
+                  mood: 'mood',
+                  scenario: 'scenario',
+                  'islamic-quiz': 'islamic-quiz',
+                  'scenario-choice': 'scenario',
+                  'moral-quest': 'scenario',
+                  'empathy-challenge': 'mood',
+                  'honesty-trials': 'scenario',
+                };
+                const key = map[id] || 'memory';
+                handleStartGame(key);
+              }} />
+            </div>
+            <Toaster />
+          </div>
+        </ErrorBoundary>
+      );
+    }
+    if (path === '/child/games/memory') {
+      return (
+        <ErrorBoundary>
+          <MemoryGame />
+        </ErrorBoundary>
+      );
+    }
+    if (path === '/child/games/mood') {
+      return (
+        <ErrorBoundary>
+          <MoodPickerGame />
+        </ErrorBoundary>
+      );
+    }
+    if (path === '/child/games/scenario') {
+      return (
+        <ErrorBoundary>
+          <ScenarioGame />
+        </ErrorBoundary>
+      );
+    }
+    if (path === '/child/games/islamic-quiz') {
+      return (
+        <ErrorBoundary>
+          <IslamicQuizGame />
+        </ErrorBoundary>
+      );
+    }
+    // Fallback: redirect to games hub if route doesn't match
+    return (
+      <ErrorBoundary>
+        <div className="flex min-h-screen bg-gradient-to-br from-[#FFF8E1] to-white">
+          <AppSidebar currentPage={'games'} onNavigate={handleNavigate} userType={'child'} />
+          <div className="flex-1 w-full lg:ml-64 overflow-x-hidden">
+            <div className="w-full flex justify-end p-4">
+              <Button variant="outline" onClick={handleLogout} className="rounded-lg">Logout</Button>
+            </div>
+            <GamesPage onStartGame={(id) => {
+              const map: Record<string, string> = {
+                memory: 'memory',
+                mood: 'mood',
+                scenario: 'scenario',
+                'islamic-quiz': 'islamic-quiz',
+                'scenario-choice': 'scenario',
+                'moral-quest': 'scenario',
+                'empathy-challenge': 'mood',
+                'honesty-trials': 'scenario',
+              };
+              const key = map[id] || 'memory';
+              handleStartGame(key);
+            }} />
+          </div>
+          <Toaster />
+        </div>
+      </ErrorBoundary>
+    );
+  }
+
+  // If in game mode, show full-screen legacy game (for parents only)
+  if (currentPage === 'game' && currentActivity && userType === 'parent') {
     return <GameScreen activityId={currentActivity} onBack={handleBackFromGame} />;
   }
 
@@ -162,12 +313,12 @@ export default function App() {
           </div>
           
           {/* Page Content */}
-          {currentPage === 'dashboard' && <ParentDashboard />}
+          {currentPage === 'dashboard' && userType === 'parent' && <ParentDashboard />}
           {/*currentPage === 'progress' && <ProgressDashboard />*/}
-          {currentPage === 'chatbot' && <ChatbotInterface />}
-          {currentPage === 'games' && <GamesPage onStartGame={handleStartGame} />}
-          {currentPage === 'activities' && <ActivitiesPage onStartActivity={handleStartActivity} />}
-          {currentPage === 'settings' && <SettingsPage />}
+          {currentPage === 'chatbot' && userType === 'parent' && <ChatbotInterface />}
+          {currentPage === 'games' && userType === 'parent' && <GamesPage onStartGame={handleStartGame} />}
+          {currentPage === 'activities' && userType === 'parent' && <ActivitiesPage onStartActivity={handleStartActivity} />}
+          {currentPage === 'settings' && userType === 'parent' && <SettingsPage />}
         </div>
         <Toaster />
       </div>
