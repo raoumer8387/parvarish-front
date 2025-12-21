@@ -3,7 +3,6 @@
 interface GamesPageProps {
   onStartGame: (gameId: string) => void;
 }
-
 export function GamesPage({ onStartGame }: GamesPageProps) {
   const handleGameClick = (gameId: string) => {
     onStartGame(gameId);
