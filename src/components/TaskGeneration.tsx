@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { generateChildTasks } from '../api/taskApi';
-import { useToast } from './ui/use-toast';
+import { toast } from 'sonner';
 
 interface Task {
   id: number;
@@ -12,7 +12,7 @@ interface Task {
   category: string;
   xp_reward: number;
   difficulty: number;
-  status: 'pending' | 'completed';
+  status: 'pending' | 'completed' | 'incomplete';
   source: string;
   meta: {
     chatbot_response: string;
@@ -33,24 +33,15 @@ const TaskGeneration: React.FC<TaskGenerationProps> = ({ childId, chatbotRespons
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const { toast } = useToast();
 
   const handleGenerateTasks = async () => {
     if (!childId) {
-      toast({
-        title: 'Error',
-        description: 'Please select a child first.',
-        variant: 'destructive',
-      });
+      toast.error('Please select a child first.');
       return;
     }
 
     if (chatbotResponse.length < 10) {
-        toast({
-            title: 'Error',
-            description: 'Chatbot response is too short.',
-            variant: 'destructive',
-        });
+        toast.error('Chatbot response is too short.');
         return;
     }
 
@@ -65,18 +56,11 @@ const TaskGeneration: React.FC<TaskGenerationProps> = ({ childId, chatbotRespons
       });
       setTasks(data.tasks);
       if (data.count === 0) {
-        toast({
-          title: 'No Tasks',
-          description: 'No new tasks were generated for this input.',
-        });
+        toast.info('No new tasks were generated for this input.');
       }
     } catch (err) {
       setError('Failed to generate tasks. Please try again.');
-      toast({
-        title: 'Error',
-        description: 'Failed to generate tasks. Please try again.',
-        variant: 'destructive',
-      });
+      toast.error('Failed to generate tasks. Please try again.');
     } finally {
       setLoading(false);
     }

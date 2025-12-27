@@ -7,6 +7,11 @@ import { useState, useEffect } from 'react';
 import { BehaviorTrackingPopup } from './BehaviorTrackingPopup';
 import * as behaviorApi from '../api/behaviorApi';
 import TaskList from './TaskList';
+import { NotificationTicker } from './NotificationTicker';
+import { LackingAnalysisSection } from './LackingAnalysisSection';
+import { GuidanceModal } from './GuidanceModal';
+import { TaskGenerationPanel } from './TaskGenerationPanel';
+import { fetchLackingAnalysis, LackingArea, Notification } from '../api/lackingApi';
 
 interface ChildWithStats extends behaviorApi.ChildInfo {
   behaviorLevel?: number;
@@ -30,6 +35,18 @@ export function ParentDashboard() {
   const [selectedChildForCheckIn, setSelectedChildForCheckIn] = useState<number | null>(null);
   const [parentId, setParentId] = useState<number | null>(null);
   const [selectedChildForTasks, setSelectedChildForTasks] = useState<number | null>(null);
+  
+  // Lacking analysis state
+  const [lackingData, setLackingData] = useState<{
+    child_name: string;
+    total_games_played: number;
+    lacking_areas: LackingArea[];
+    requires_attention: boolean;
+  } | null>(null);
+  const [loadingLacking, setLoadingLacking] = useState(false);
+  const [selectedLacking, setSelectedLacking] = useState<LackingArea | null>(null);
+  const [showGuidanceModal, setShowGuidanceModal] = useState(false);
+  const [showTaskPanel, setShowTaskPanel] = useState(false);
 
   // Fetch children list, their stats, and check-in status
   useEffect(() => {
@@ -139,8 +156,57 @@ export function ParentDashboard() {
     }
   };
 
+  // Fetch lacking analysis for selected child
+  useEffect(() => {
+    if (selectedChildForTasks) {
+      fetchLackingData(selectedChildForTasks);
+    }
+  }, [selectedChildForTasks]);
+
+  const fetchLackingData = async (childId: number) => {
+    setLoadingLacking(true);
+    try {
+      const data = await fetchLackingAnalysis(childId, 7); // Last 7 days
+      setLackingData(data);
+    } catch (err) {
+      console.error('Failed to load lacking analysis:', err);
+      setLackingData(null);
+    } finally {
+      setLoadingLacking(false);
+    }
+  };
+
+  const handleGetGuidance = (area: LackingArea) => {
+    setSelectedLacking(area);
+    setShowGuidanceModal(true);
+  };
+
+  const handleGenerateTasks = () => {
+    setShowGuidanceModal(false);
+    setShowTaskPanel(true);
+  };
+
+  const handleNotificationClick = (notification: Notification) => {
+    // Find the child and select them
+    const child = children.find(c => c.name === notification.child_name);
+    if (child) {
+      setSelectedChildForTasks(child.id);
+    }
+  };
+
+  const handleChildSelectionChange = (childId: number) => {
+    setSelectedChildForTasks(childId);
+  };
+
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-[#FFF8E1] to-white pt-20 lg:pt-8">
+      {/* Notification Ticker */}
+      <NotificationTicker 
+        childId={selectedChildForTasks || undefined}
+        onNotificationClick={handleNotificationClick}
+      />
+      
       {/* Behavior Tracking Popup */}
       {showBehaviorPopup && parentId && (
         <BehaviorTrackingPopup
@@ -150,10 +216,36 @@ export function ParentDashboard() {
         />
       )}
 
+      {/* Guidance Modal */}
+      {selectedLacking && selectedChildForTasks && (
+        <GuidanceModal
+          isOpen={showGuidanceModal}
+          onClose={() => setShowGuidanceModal(false)}
+          childId={selectedChildForTasks}
+          childName={lackingData?.child_name || ''}
+          lackingArea={selectedLacking.area}
+          lackingLabel={selectedLacking.label}
+          score={selectedLacking.score}
+          onGenerateTasks={handleGenerateTasks}
+        />
+      )}
+
+      {/* Task Generation Panel */}
+      {selectedLacking && selectedChildForTasks && (
+        <TaskGenerationPanel
+          isOpen={showTaskPanel}
+          onClose={() => setShowTaskPanel(false)}
+          childId={selectedChildForTasks}
+          childName={lackingData?.child_name || ''}
+          lackingArea={selectedLacking.area}
+          lackingLabel={selectedLacking.label}
+        />
+      )}
+
       {/* Welcome Header */}
       <div className="mb-6 lg:mb-8">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-          <h1 className="text-[#2D5F3F] text-2xl sm:text-3xl lg:text-4xl">Welcome, Ahmed</h1>
+          <h1 className="text-[#2D5F3F] text-2xl sm:text-3xl lg:text-4xl">Welcome, Parent</h1>
           <Button
             onClick={() => handleOpenBehaviorCheckIn()}
             className="bg-gradient-to-r from-[#A8E6CF] to-[#8BD4AE] hover:from-[#8BD4AE] hover:to-[#A8E6CF] text-[#2D5F3F] rounded-xl font-medium relative"
@@ -299,8 +391,37 @@ export function ParentDashboard() {
         )}
       </div>
 
+      {/* Lacking Analysis Section */}
+      {selectedChildForTasks && lackingData && (
+        <div className="mb-8">
+          {loadingLacking ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="flex flex-col items-center gap-3">
+                <Loader2 className="h-8 w-8 animate-spin text-[#A8E6CF]" />
+                <p className="text-gray-600">Loading capability analysis...</p>
+              </div>
+            </div>
+          ) : (
+            <LackingAnalysisSection
+              childId={selectedChildForTasks}
+              childName={lackingData.child_name}
+              lackingAreas={lackingData.lacking_areas}
+              totalGamesPlayed={lackingData.total_games_played}
+              onGetGuidance={handleGetGuidance}
+              children={children.map(c => ({ id: c.id, name: c.name }))}
+              onChildChange={handleChildSelectionChange}
+            />
+          )}
+        </div>
+      )}
+
       {/* Task List */}
-      {selectedChildForTasks && <TaskList childId={selectedChildForTasks} />}
+      {selectedChildForTasks && (
+        <TaskList 
+          childId={selectedChildForTasks} 
+          children={children.map(c => ({ id: c.id, name: c.name }))}
+        />
+      )}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mt-8">
