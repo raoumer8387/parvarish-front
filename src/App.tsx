@@ -9,6 +9,7 @@ import { ActivitiesPage } from './components/ActivitiesPage';
 import { GamesPage } from './components/GamesPage';
 import { GameScreen } from './components/GameScreen';
 import { SettingsPage } from './components/SettingsPage';
+import { ProgressDashboard } from './components/ProgressDashboard';
 import ParentOnboarding from './pages/ParentOnboarding.jsx';
 import { Toaster } from './components/ui/toaster';
 import MemoryGame from './components/games/MemoryGame';
@@ -206,10 +207,10 @@ export default function App() {
     if (path === '/child/games') {
       return (
         <ErrorBoundary>
-          <div className="flex min-h-screen bg-gradient-to-br from-[#FFF8E1] to-white">
+          <div className="flex h-screen overflow-hidden bg-gradient-to-br from-[#FFF8E1] to-white">
             <AppSidebar currentPage={'games'} onNavigate={handleNavigate} userType={'child'} />
-            <div className="flex-1 w-full lg:ml-64 overflow-x-hidden">
-              <div className="w-full flex justify-end p-4">
+            <div className="flex-1 w-full lg:ml-64 overflow-x-hidden overflow-y-auto">
+              <div className="w-full flex justify-end p-4 sticky top-0 bg-gradient-to-br from-[#FFF8E1] to-white z-10">
                 <Button variant="outline" onClick={handleLogout} className="rounded-lg">Logout</Button>
               </div>
               <GamesPage onStartGame={(id) => {
@@ -264,10 +265,10 @@ export default function App() {
     // Fallback: redirect to games hub if route doesn't match
     return (
       <ErrorBoundary>
-        <div className="flex min-h-screen bg-gradient-to-br from-[#FFF8E1] to-white">
+        <div className="flex h-screen overflow-hidden bg-gradient-to-br from-[#FFF8E1] to-white">
           <AppSidebar currentPage={'games'} onNavigate={handleNavigate} userType={'child'} />
-          <div className="flex-1 w-full lg:ml-64 overflow-x-hidden">
-            <div className="w-full flex justify-end p-4">
+          <div className="flex-1 w-full lg:ml-64 overflow-x-hidden overflow-y-auto">
+            <div className="w-full flex justify-end p-4 sticky top-0 bg-gradient-to-br from-[#FFF8E1] to-white z-10">
               <Button variant="outline" onClick={handleLogout} className="rounded-lg">Logout</Button>
             </div>
             <GamesPage onStartGame={(id) => {
@@ -299,14 +300,14 @@ export default function App() {
   // Main app layout with sidebar (for parents)
   return (
     <ErrorBoundary>
-      <div className="flex min-h-screen bg-gradient-to-br from-[#FFF8E1] to-white">
+      <div className="flex h-screen overflow-hidden bg-gradient-to-br from-[#FFF8E1] to-white">
         {/* Sidebar Navigation */}
         <AppSidebar currentPage={currentPage} onNavigate={handleNavigate} userType={userType || 'parent'} />
 
         {/* Main Content Area */}
-        <div className="flex-1 w-full lg:ml-64 overflow-x-hidden">
+        <div className="flex-1 w-full lg:ml-64 overflow-x-hidden overflow-y-auto">
           {/* Top bar with Logout */}
-          <div className="w-full flex justify-end p-4">
+          <div className="w-full flex justify-end p-4 sticky top-0 bg-gradient-to-br from-[#FFF8E1] to-white z-10">
             <Button variant="outline" onClick={handleLogout} className="rounded-lg">
               Logout
             </Button>
@@ -314,7 +315,7 @@ export default function App() {
           
           {/* Page Content */}
           {currentPage === 'dashboard' && userType === 'parent' && <ParentDashboard />}
-          {/*currentPage === 'progress' && <ProgressDashboard />*/}
+          {currentPage === 'progress' && <ProgressDashboard />}
           {currentPage === 'chatbot' && userType === 'parent' && <ChatbotInterface />}
           {currentPage === 'games' && userType === 'parent' && <GamesPage onStartGame={handleStartGame} />}
           {currentPage === 'activities' && userType === 'parent' && <ActivitiesPage onStartActivity={handleStartActivity} />}

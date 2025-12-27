@@ -3,23 +3,24 @@ import { Card } from './ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Send, Mic, Bot, User, Loader2 } from 'lucide-react';
-import { ScrollArea } from './ui/scroll-area';
+import { Send, Bot, User, Loader2 } from 'lucide-react';
 import * as chatApi from '../api/chatApi';
 import * as behaviorApi from '../api/behaviorApi';
 import TaskGeneration from './TaskGeneration';
+import { ThinkingIndicator } from './ThinkingIndicator';
 
 interface Message {
-  role: 'user' | 'ai';
+  role: 'user' | 'ai' | 'thinking';
   content: string;
   timestamp: string;
   tags?: string[];
+  isTemporary?: boolean;
+  id?: string;
 }
 
 export function ChatbotInterface() {
   const [selectedChildId, setSelectedChildId] = useState<number | null>(null);
   const [children, setChildren] = useState<behaviorApi.ChildInfo[]>([]);
-  const [loadingChildren, setLoadingChildren] = useState(true);
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'ai',
@@ -30,11 +31,11 @@ export function ChatbotInterface() {
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [lastAiMessage, setLastAiMessage] = useState<Message | null>(null);
+  const [thinkingMessageId, setThinkingMessageId] = useState<string | null>(null);
 
   // Fetch children list on mount
   useEffect(() => {
     const fetchChildren = async () => {
-      setLoadingChildren(true);
       try {
         const data = await behaviorApi.getParentChildren();
         const childrenArray = Array.isArray(data) ? data : (data as any)?.children || [];
@@ -42,8 +43,6 @@ export function ChatbotInterface() {
       } catch (err) {
         console.error('Failed to load children:', err);
         setChildren([]);
-      } finally {
-        setLoadingChildren(false);
       }
     };
     fetchChildren();
@@ -84,8 +83,17 @@ export function ChatbotInterface() {
     fetchHistory();
   }, [selectedChildId]);
 
+  // Cleanup thinking indicator on unmount
+  useEffect(() => {
+    return () => {
+      if (thinkingMessageId) {
+        setThinkingMessageId(null);
+      }
+    };
+  }, [thinkingMessageId]);
+
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || isLoading) return;
+    if (!inputMessage.trim() || isLoading || thinkingMessageId) return;
 
     const newUserMessage: Message = {
       role: 'user',
@@ -93,7 +101,20 @@ export function ChatbotInterface() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMessages([...messages, newUserMessage]);
+    // Create thinking indicator message
+    const thinkingId = `thinking-${Date.now()}`;
+    const thinkingMessage: Message = {
+      role: 'thinking',
+      content: '',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isTemporary: true,
+      id: thinkingId,
+    };
+
+    // Add user message and thinking indicator immediately
+    setMessages(prev => [...prev, newUserMessage, thinkingMessage]);
+    setThinkingMessageId(thinkingId);
+    
     const userInput = inputMessage;
     setInputMessage('');
     setIsLoading(true);
@@ -110,7 +131,10 @@ export function ChatbotInterface() {
         tags: (response as any).tags, // Assuming tags might come back
       };
       
-      setMessages((prev) => [...prev, aiResponse]);
+      // Replace thinking indicator with AI response
+      setMessages(prev => prev.map(msg => 
+        msg.id === thinkingId ? aiResponse : msg
+      ));
       setLastAiMessage(aiResponse);
     } catch (err) {
       console.error('Failed to send message:', err);
@@ -119,9 +143,14 @@ export function ChatbotInterface() {
         content: 'Sorry, I encountered an error. Please try again.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      
+      // Replace thinking indicator with error message
+      setMessages(prev => prev.map(msg => 
+        msg.id === thinkingId ? errorMessage : msg
+      ));
     } finally {
       setIsLoading(false);
+      setThinkingMessageId(null);
     }
   };
 
@@ -142,7 +171,7 @@ export function ChatbotInterface() {
   };
 
   return (
-    <div className="flex flex-col bg-gradient-to-br from-[#FFF8E1] to-white p-4 sm:p-6 lg:p-8 pt-20 lg:pt-8 min-h-screen">
+    <div className="flex flex-col bg-gradient-to-br from-[#FFF8E1] to-white p-4 sm:p-6 lg:p-8 pt-20 lg:pt-8 h-screen overflow-hidden">
       {/* Header */}
       <div className="mb-4 sm:mb-6">
         <h1 className="text-[#2D5F3F] mb-3 sm:mb-4 text-2xl sm:text-3xl lg:text-4xl">AI Parenting Assistant</h1>
@@ -177,45 +206,49 @@ export function ChatbotInterface() {
       </div>
 
       {/* Chat Area */}
-      <Card className="flex-1 flex flex-col rounded-3xl overflow-hidden shadow-xl">
-        <ScrollArea className="flex-1 p-6">
+      <Card className="flex-1 flex flex-col rounded-3xl overflow-hidden shadow-xl min-h-0">
+        <div className="flex-1 overflow-y-auto p-6">
           <div className="space-y-4">
             {messages.map((message, index) => (
               <div
-                key={index}
+                key={message.id || index}
                 className="flex flex-col"
               >
-                <div className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    {message.role === 'ai' && (
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#A8E6CF] to-[#B3E5FC] flex items-center justify-center flex-shrink-0">
-                        <Bot className="h-5 w-5 text-white" />
-                    </div>
-                    )}
-                    
-                    <div
-                    className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-3 sm:p-4 ${
-                        message.role === 'user'
-                        ? 'bg-[#A8E6CF] text-[#2D5F3F]'
-                        : 'bg-white border-2 border-gray-100'
-                    }`}
-                    >
-                    <p className="whitespace-pre-line text-sm sm:text-base">{message.content}</p>
-                    <p
-                        className={`text-xs mt-2 ${
-                        message.role === 'user' ? 'text-[#2D5F3F]/70' : 'text-gray-500'
-                        }`}
-                    >
-                        {message.timestamp}
-                    </p>
-                    </div>
+                {message.role === 'thinking' ? (
+                  <ThinkingIndicator timestamp={message.timestamp} />
+                ) : (
+                  <div className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      {message.role === 'ai' && (
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#A8E6CF] to-[#B3E5FC] flex items-center justify-center flex-shrink-0">
+                          <Bot className="h-5 w-5 text-white" />
+                      </div>
+                      )}
+                      
+                      <div
+                      className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-3 sm:p-4 ${
+                          message.role === 'user'
+                          ? 'bg-[#A8E6CF] text-[#2D5F3F]'
+                          : 'bg-white border-2 border-gray-100'
+                      }`}
+                      >
+                      <p className="whitespace-pre-line text-sm sm:text-base">{message.content}</p>
+                      <p
+                          className={`text-xs mt-2 ${
+                          message.role === 'user' ? 'text-[#2D5F3F]/70' : 'text-gray-500'
+                          }`}
+                      >
+                          {message.timestamp}
+                      </p>
+                      </div>
 
-                    {message.role === 'user' && (
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#B3E5FC] to-[#81D4FA] flex items-center justify-center flex-shrink-0">
-                        <User className="h-5 w-5 text-white" />
-                    </div>
-                    )}
-                </div>
-                {lastAiMessage && lastAiMessage.content === message.content && (
+                      {message.role === 'user' && (
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#B3E5FC] to-[#81D4FA] flex items-center justify-center flex-shrink-0">
+                          <User className="h-5 w-5 text-white" />
+                      </div>
+                      )}
+                  </div>
+                )}
+                {lastAiMessage && lastAiMessage.content === message.content && message.role === 'ai' && (
                   <div className="ml-12 mt-2">
                     <TaskGeneration 
                       childId={selectedChildId}
@@ -227,7 +260,7 @@ export function ChatbotInterface() {
               </div>
             ))}
           </div>
-        </ScrollArea>
+        </div>
 
         {/* Input Area */}
         <div className="p-3 sm:p-4 bg-gray-50 border-t">
@@ -235,13 +268,13 @@ export function ChatbotInterface() {
             <Input
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
               placeholder={getPlaceholderText()}
               className="flex-1 rounded-xl text-sm sm:text-base"
             />
             <Button
               onClick={handleSendMessage}
-              disabled={isLoading || !inputMessage.trim()}
+              disabled={isLoading || !inputMessage.trim() || !!thinkingMessageId}
               className="bg-[#A8E6CF] hover:bg-[#8BD4AE] text-[#2D5F3F] rounded-xl px-3 sm:px-6"
             >
               {isLoading ? (
@@ -253,8 +286,7 @@ export function ChatbotInterface() {
             <Button
               variant="outline"
               className="rounded-xl px-3 sm:px-6 border-2 border-[#B3E5FC] text-[#1E4F6F] hover:bg-[#B3E5FC]/10"
-            >{/*
-              <Mic className="h-4 w-4 sm:h-5 sm:w-5" />*/}
+            >
             </Button>
           </div>
           <p className="text-xs text-gray-500 mt-2 text-center">
