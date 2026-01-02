@@ -129,7 +129,32 @@ export const LackingAnalysisSection: React.FC<LackingAnalysisSectionProps> = ({
     </div>
   ) : null;
 
-  if (lackingAreas.length === 0) {
+  // Always show all 4 capability areas, even if backend doesn't flag them as lacking
+  const allGameTypes = [
+    { area: 'presence_of_mind', label: 'Presence of Mind', game_type: 'memory' },
+    { area: 'mood_identification', label: 'Mood Identification', game_type: 'mood' },
+    { area: 'learning_capability', label: 'Learning Capability', game_type: 'islamic_quiz' },
+    { area: 'behavior_identification', label: 'Behavior Identification', game_type: 'scenario' }
+  ];
+
+  // Merge backend lacking areas with all game types
+  const displayAreas: LackingArea[] = allGameTypes.map(gameType => {
+    const backendArea = lackingAreas.find(la => la.area === gameType.area);
+    if (backendArea) {
+      return backendArea;
+    }
+    // If not in lacking_areas, assume good performance (score 70+)
+    return {
+      area: gameType.area,
+      label: gameType.label,
+      score: 70, // Default good score
+      priority: 'medium' as const,
+      game_type: gameType.game_type
+    };
+  });
+
+  // Show info if no games played yet
+  if (totalGamesPlayed === 0) {
     return (
       <div className="space-y-4">
         {childSelector && (
@@ -137,20 +162,15 @@ export const LackingAnalysisSection: React.FC<LackingAnalysisSectionProps> = ({
             {childSelector}
           </div>
         )}
-        <Card className="border-green-200 bg-green-50">
+        <Card className="border-blue-200 bg-blue-50">
           <CardHeader>
-            <CardTitle className="text-green-700 flex items-center gap-2">
-              ✅ All Areas Looking Good!
+            <CardTitle className="text-blue-700 flex items-center gap-2">
+              📊 No Games Played Yet
             </CardTitle>
             <CardDescription>
-              {childName} is performing well in all capability areas. Keep up the great work!
+              {childName} hasn't played any games yet. Scores will appear after playing games.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Total games played: {totalGamesPlayed}
-            </p>
-          </CardContent>
         </Card>
       </div>
     );
@@ -169,7 +189,7 @@ export const LackingAnalysisSection: React.FC<LackingAnalysisSectionProps> = ({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {lackingAreas.map((area) => (
+        {displayAreas.map((area) => (
           <LackingGauge
             key={area.area}
             lackingArea={area}

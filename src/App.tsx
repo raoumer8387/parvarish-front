@@ -10,6 +10,7 @@ import { GamesPage } from './components/GamesPage';
 import { GameScreen } from './components/GameScreen';
 import { SettingsPage } from './components/SettingsPage';
 import { ProgressDashboard } from './components/ProgressDashboard';
+import ActivityHistoryPage from './components/ActivityHistoryPage';
 import ParentOnboarding from './pages/ParentOnboarding.jsx';
 import { Toaster } from './components/ui/toaster';
 import MemoryGame from './components/games/MemoryGame';
@@ -19,7 +20,7 @@ import IslamicQuizGame from './components/games/IslamicQuizGame';
 import { getUserType } from './api/auth';
 
 type UserType = 'parent' | 'child' | null;
-type Page = 'dashboard' | 'profiles' | 'progress' | 'chatbot' | 'activities' | 'settings' | 'games' | 'game';
+type Page = 'dashboard' | 'profiles' | 'progress' | 'chatbot' | 'activities' | 'settings' | 'games' | 'game' | 'activity-history';
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -319,6 +320,7 @@ export default function App() {
           {currentPage === 'chatbot' && userType === 'parent' && <ChatbotInterface />}
           {currentPage === 'games' && userType === 'parent' && <GamesPage onStartGame={handleStartGame} />}
           {currentPage === 'activities' && userType === 'parent' && <ActivitiesPage onStartActivity={handleStartActivity} />}
+          {currentPage === 'activity-history' && userType === 'parent' && <ActivityHistoryPage />}
           {currentPage === 'settings' && userType === 'parent' && <SettingsPage />}
         </div>
         <Toaster />

@@ -71,9 +71,22 @@ export async function fetchLackingAnalysis(
   const response = await axiosInstance.get(
     `/api/v1/parent/lacking/analyze/${childId}`,
     {
-      params: { days }
+      params: { 
+        days,
+        // Add timestamp to prevent caching
+        _t: new Date().getTime()
+      },
+      headers: {
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
+      }
     }
   );
+  console.log('API Response - Lacking Analysis:', {
+    childId,
+    status: response.status,
+    data: response.data
+  });
   return response.data;
 }
 

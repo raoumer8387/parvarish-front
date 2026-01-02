@@ -2,7 +2,7 @@ import { Card } from './ui/card';
 import { Progress } from './ui/progress';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Heart, Clock, Star, CheckCircle, Loader2 } from 'lucide-react';
+import { Heart, Clock, Star, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { BehaviorTrackingPopup } from './BehaviorTrackingPopup';
 import * as behaviorApi from '../api/behaviorApi';
@@ -166,13 +166,53 @@ export function ParentDashboard() {
   const fetchLackingData = async (childId: number) => {
     setLoadingLacking(true);
     try {
+      // Add timestamp to bypass any caching
+      const timestamp = new Date().getTime();
       const data = await fetchLackingAnalysis(childId, 7); // Last 7 days
+      console.log('Lacking Analysis Data Received:', {
+        timestamp,
+        childId,
+        child_name: data.child_name,
+        total_games: data.total_games_played,
+        lacking_areas_count: data.lacking_areas.length,
+        lacking_areas: data.lacking_areas,
+        requires_attention: data.requires_attention
+      });
       setLackingData(data);
     } catch (err) {
       console.error('Failed to load lacking analysis:', err);
       setLackingData(null);
     } finally {
       setLoadingLacking(false);
+    }
+  };
+
+  const handleRefreshData = async () => {
+    if (!selectedChildForTasks) return;
+    
+    console.log('Refreshing data for child:', selectedChildForTasks);
+    
+    // Refresh lacking analysis
+    await fetchLackingData(selectedChildForTasks);
+    
+    // Refresh child stats
+    try {
+      const stats = await behaviorApi.getChildStats(selectedChildForTasks);
+      console.log('Child stats refreshed:', stats);
+      setChildren(prevChildren => 
+        prevChildren.map(child => 
+          child.id === selectedChildForTasks
+            ? {
+                ...child,
+                behaviorLevel: stats.behavior_level || 0,
+                islamicKnowledge: stats.islamic_knowledge || 0,
+                categories: stats.categories || {},
+              }
+            : child
+        )
+      );
+    } catch (err) {
+      console.error('Failed to refresh child stats:', err);
     }
   };
 
@@ -246,18 +286,29 @@ export function ParentDashboard() {
       <div className="mb-6 lg:mb-8">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
           <h1 className="text-[#2D5F3F] text-2xl sm:text-3xl lg:text-4xl">Welcome, Parent</h1>
-          <Button
-            onClick={() => handleOpenBehaviorCheckIn()}
-            className="bg-gradient-to-r from-[#A8E6CF] to-[#8BD4AE] hover:from-[#8BD4AE] hover:to-[#A8E6CF] text-[#2D5F3F] rounded-xl font-medium relative"
-          >
-            <CheckCircle className="h-4 w-4 mr-2" />
-            Daily Check-in
-            {children.filter(c => c.needsCheckIn).length > 0 && (
-              <span className="absolute -top-2 -right-2 bg-orange-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                {children.filter(c => c.needsCheckIn).length}
-              </span>
-            )}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleRefreshData}
+              variant="outline"
+              className="bg-white hover:bg-gray-50 text-[#2D5F3F] rounded-xl font-medium"
+              disabled={loadingLacking}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${loadingLacking ? 'animate-spin' : ''}`} />
+              Refresh Data
+            </Button>
+            <Button
+              onClick={() => handleOpenBehaviorCheckIn()}
+              className="bg-gradient-to-r from-[#A8E6CF] to-[#8BD4AE] hover:from-[#8BD4AE] hover:to-[#A8E6CF] text-[#2D5F3F] rounded-xl font-medium relative"
+            >
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Daily Check-in
+              {children.filter(c => c.needsCheckIn).length > 0 && (
+                <span className="absolute -top-2 -right-2 bg-orange-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                  {children.filter(c => c.needsCheckIn).length}
+                </span>
+              )}
+            </Button>
+          </div>
         </div>
         <div className="flex items-start gap-2 bg-white/60 p-3 sm:p-4 rounded-2xl border-l-4 border-[#A8E6CF]">
           <span className="text-xl sm:text-2xl">💡</span>
