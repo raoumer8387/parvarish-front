@@ -1,23 +1,23 @@
 ﻿import { useEffect, useRef, useState } from 'react';
-import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { useToast } from '../ui/use-toast';
-import { ArrowLeft, Star, Heart, Sun, Moon, Flower, Zap, Gift, Music } from 'lucide-react';
+import { ArrowLeft, Star, Heart, Sun, Moon, Flower, Zap, Gift, Music, Eye, Timer, Trophy, RotateCcw } from 'lucide-react';
 import { completeMemorySession } from '../../api/gamesApi';
 import { getChildId } from '../../api/auth';
 
 const GAME_TIME_LIMIT = 180;
+const PREVIEW_TIME = 3000; // 3 seconds preview
 
-// Game symbols and colors
+// Defined colors for better contrast
 const SYMBOLS = [
-  { icon: Star, color: 'text-yellow-500', bg: 'bg-yellow-100' },
-  { icon: Heart, color: 'text-red-500', bg: 'bg-red-100' },
-  { icon: Sun, color: 'text-orange-500', bg: 'bg-orange-100' },
-  { icon: Moon, color: 'text-blue-500', bg: 'bg-blue-100' },
-  { icon: Flower, color: 'text-pink-500', bg: 'bg-pink-100' },
-  { icon: Zap, color: 'text-purple-500', bg: 'bg-purple-100' },
-  { icon: Gift, color: 'text-green-500', bg: 'bg-green-100' },
-  { icon: Music, color: 'text-indigo-500', bg: 'bg-indigo-100' },
+  { icon: Star, color: 'text-amber-600', bg: 'bg-amber-100', border: 'border-amber-200' },
+  { icon: Heart, color: 'text-rose-600', bg: 'bg-rose-100', border: 'border-rose-200' },
+  { icon: Sun, color: 'text-orange-600', bg: 'bg-orange-100', border: 'border-orange-200' },
+  { icon: Moon, color: 'text-sky-600', bg: 'bg-sky-100', border: 'border-sky-200' },
+  { icon: Flower, color: 'text-pink-600', bg: 'bg-pink-100', border: 'border-pink-200' },
+  { icon: Zap, color: 'text-violet-600', bg: 'bg-violet-100', border: 'border-violet-200' },
+  { icon: Gift, color: 'text-emerald-600', bg: 'bg-emerald-100', border: 'border-emerald-200' },
+  { icon: Music, color: 'text-indigo-600', bg: 'bg-indigo-100', border: 'border-indigo-200' },
 ];
 
 interface GameCard {
@@ -36,31 +36,74 @@ export default function MemoryGame() {
   const [wrong, setWrong] = useState(0);
   const [timeLeft, setTimeLeft] = useState(GAME_TIME_LIMIT);
   const [isComplete, setIsComplete] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(true);
   const [result, setResult] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
   const startTime = useRef(Date.now());
   const timerRef = useRef<number | null>(null);
 
-  // Initialize game cards
+  // Debug: Log colors when completion screen renders
+  useEffect(() => {
+    if (isComplete && result) {
+      setTimeout(() => {
+        const button = document.querySelector('button[class*="emerald"]');
+        const h1 = document.querySelector('h1');
+        const scoreText = document.querySelector('[class*="text-indigo"]');
+        
+        if (button) {
+          const buttonStyles = window.getComputedStyle(button);
+          console.log('Button Background Color:', buttonStyles.backgroundColor);
+          console.log('Button Text Color:', buttonStyles.color);
+          console.log('Button Classes:', button.className);
+        }
+        
+        if (h1) {
+          const h1Styles = window.getComputedStyle(h1);
+          console.log('H1 Text Color:', h1Styles.color);
+          console.log('H1 Classes:', h1.className);
+        }
+        
+        if (scoreText) {
+          const scoreStyles = window.getComputedStyle(scoreText);
+          console.log('Score Text Color:', scoreStyles.color);
+          console.log('Score Classes:', scoreText.className);
+        }
+      }, 100);
+    }
+  }, [isComplete, result]);
+
+  // --- Game Logic ---
   useEffect(() => {
     const gameCards: GameCard[] = [];
-    // Create pairs of cards (only 4 pairs = 8 cards)
     for (let i = 0; i < 4; i++) {
       const symbolIndex = i % SYMBOLS.length;
       gameCards.push(
-        { id: i * 2, symbolIndex, isFlipped: false, isMatched: false },
-        { id: i * 2 + 1, symbolIndex, isFlipped: false, isMatched: false }
+        { id: i * 2, symbolIndex, isFlipped: true, isMatched: false },
+        { id: i * 2 + 1, symbolIndex, isFlipped: true, isMatched: false }
       );
     }
-    // Shuffle cards
+    
+    // Shuffle
     for (let i = gameCards.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [gameCards[i], gameCards[j]] = [gameCards[j], gameCards[i]];
     }
     setCards(gameCards);
+
+    // Preview Timer
+    const previewTimer = setTimeout(() => {
+      setCards(prev => prev.map(c => ({ ...c, isFlipped: false })));
+      setIsPreviewing(false);
+      startTime.current = Date.now();
+      startGameTimer();
+    }, PREVIEW_TIME);
+
+    return () => clearTimeout(previewTimer);
   }, []);
 
-  useEffect(() => {
+  const startGameTimer = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = window.setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
@@ -71,12 +114,12 @@ export default function MemoryGame() {
         return prev - 1;
       });
     }, 1000);
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
+  };
+
+  useEffect(() => {
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, []);
 
-  // Handle card flipping logic
   useEffect(() => {
     if (flippedCards.length === 2) {
       const [first, second] = flippedCards;
@@ -84,28 +127,23 @@ export default function MemoryGame() {
       const secondCard = cards.find(c => c.id === second);
       
       if (firstCard && secondCard && firstCard.symbolIndex === secondCard.symbolIndex) {
-        // Match found
         setTimeout(() => {
           setCards(prev => prev.map(card => 
             card.id === first || card.id === second 
-              ? { ...card, isMatched: true }
+              ? { ...card, isMatched: true, isFlipped: true }
               : card
           ));
           setCorrect(c => c + 1);
           setFlippedCards([]);
           
-          // Check if game is complete
           const updatedCards = cards.map(card => 
-            card.id === first || card.id === second 
-              ? { ...card, isMatched: true }
-              : card
+            card.id === first || card.id === second ? { ...card, isMatched: true } : card
           );
           if (updatedCards.every(card => card.isMatched)) {
             handleSubmit();
           }
-        }, 1000);
+        }, 500);
       } else {
-        // No match
         setTimeout(() => {
           setCards(prev => prev.map(card => 
             card.id === first || card.id === second 
@@ -120,30 +158,27 @@ export default function MemoryGame() {
   }, [flippedCards, cards]);
 
   const handleCardClick = (cardId: number) => {
-    if (flippedCards.length >= 2) return;
-    
+    if (isPreviewing || flippedCards.length >= 2) return;
     const card = cards.find(c => c.id === cardId);
     if (!card || card.isFlipped || card.isMatched || flippedCards.includes(cardId)) return;
 
-    setCards(prev => prev.map(c => 
-      c.id === cardId ? { ...c, isFlipped: true } : c
-    ));
+    setCards(prev => prev.map(c => c.id === cardId ? { ...c, isFlipped: true } : c));
     setFlippedCards(prev => [...prev, cardId]);
     setFlips(f => f + 1);
   };
 
   const handleTimeUp = () => {
-    toast({ title: 'Time Up!', description: 'Submitting...' });
+    toast({ title: 'Time Up!', description: 'Submitting result...' });
     handleSubmit();
   };
 
   const handleSubmit = async () => {
     if (isComplete) return;
+    if (timerRef.current) clearInterval(timerRef.current);
+    
     const childId = getChildId();
-    if (!childId) {
-      toast({ title: 'Error', description: 'No child profile found' });
-      return;
-    }
+    if (!childId) return; // Handle error appropriately
+    
     setIsSubmitting(true);
     try {
       const res = await completeMemorySession({
@@ -155,8 +190,8 @@ export default function MemoryGame() {
       });
       setResult(res);
       setIsComplete(true);
-    } catch (e: any) {
-      toast({ title: 'Error', description: e?.response?.data?.detail || 'Failed' });
+    } catch (e) {
+      // console.error(e);
     } finally {
       setIsSubmitting(false);
     }
@@ -167,200 +202,171 @@ export default function MemoryGame() {
     window.location.reload();
   };
 
+  // --- Render ---
+
+  // 1. Completion Screen (Fixed White Text Issue)
   if (isComplete && result) {
     return (
-      <div className="min-h-screen w-full bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 flex items-center justify-center p-6">
-        <div className="max-w-5xl w-full space-y-8 animate-in fade-in duration-700">
-          {/* Celebration Header */}
-          <div className="text-center space-y-4">
-            <div className="flex justify-center gap-4 mb-4">
-              <span className="text-7xl animate-bounce" style={{ animationDelay: '0ms' }}>🎉</span>
-              <span className="text-7xl animate-bounce" style={{ animationDelay: '150ms' }}>🎊</span>
-              <span className="text-7xl animate-bounce" style={{ animationDelay: '300ms' }}>✨</span>
-            </div>
-            <h1 className="text-6xl font-extrabold bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 bg-clip-text text-transparent drop-shadow-lg">
-              Memory Master!
-            </h1>
-            <p className="text-gray-700 text-2xl font-medium">You've completed the challenge! 🧠</p>
-          </div>
+      <div className="min-h-screen w-full bg-slate-50 flex items-center justify-center p-6 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:16px_16px]">
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-8 text-center space-y-6 border border-slate-100 animate-in zoom-in-95 duration-300 flex flex-col">
           
-          {/* Score Display */}
-          <div className="relative">
-            <div className="absolute inset-0 bg-gradient-to-r from-violet-400 to-purple-400 rounded-3xl blur-xl opacity-50"></div>
-            <div className="relative bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 rounded-3xl p-10 text-white shadow-2xl border-4 border-white/30">
-              <div className="flex items-center justify-center gap-8">
-                <div className="text-center">
-                  <div className="text-8xl font-black mb-3 drop-shadow-2xl">{result.score.percentage}%</div>
-                  <div className="text-3xl font-semibold opacity-90">{result.score.total_score} / {result.score.max_score} Points</div>
-                </div>
-              </div>
-              <div className="mt-6 pt-6 border-t-2 border-white/30">
-                <p className="text-2xl text-center font-medium">{result.completion_message}</p>
-              </div>
+          <div className="flex justify-center">
+            <div className="h-24 w-24 bg-yellow-100 rounded-full flex items-center justify-center animate-bounce">
+              <Trophy className="h-12 w-12 text-yellow-600" />
             </div>
           </div>
-          
+
+          <div className="space-y-2">
+            <h1 className="text-3xl font-black text-slate-900">Level Complete!</h1>
+            <p className="text-slate-600">Great memory skills!</p>
+          </div>
+
+          {/* Score Card */}
+          <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200">
+            <div className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">Total Score</div>
+            <div className="text-5xl font-black text-indigo-600">{result.score.percentage}%</div>
+            <div className="text-slate-400 font-medium mt-1">{result.score.total_score} points earned</div>
+          </div>
+
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
-            <Card className="p-10 bg-gradient-to-br from-blue-100 via-blue-200 to-blue-300 border-3 border-blue-400 shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-105 hover:-translate-y-2 rounded-2xl">
-              <div className="text-center space-y-4">
-                <div className="text-7xl mb-4 filter drop-shadow-lg">⏱️</div>
-                <div className="text-xl font-black text-blue-900 uppercase tracking-wider">Time Taken</div>
-                <div className="text-6xl font-black text-blue-800 drop-shadow-md">{result.time_taken}s</div>
-              </div>
-            </Card>
-            <Card className="p-10 bg-gradient-to-br from-green-100 via-green-200 to-green-300 border-3 border-green-400 shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-105 hover:-translate-y-2 rounded-2xl">
-              <div className="text-center space-y-4">
-                <div className="text-7xl mb-4 filter drop-shadow-lg">✅</div>
-                <div className="text-xl font-black text-green-900 uppercase tracking-wider">Correct Matches</div>
-                <div className="text-6xl font-black text-green-800 drop-shadow-md">{correct}</div>
-              </div>
-            </Card>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="p-4 rounded-xl bg-blue-50 border border-blue-100">
+              <Timer className="h-6 w-6 text-blue-500 mx-auto mb-2" />
+              <div className="text-2xl font-bold text-slate-800">{result.time_taken}s</div>
+              <div className="text-xs text-blue-600 font-bold uppercase">Time</div>
+            </div>
+            <div className="p-4 rounded-xl bg-green-50 border border-green-100">
+              <RotateCcw className="h-6 w-6 text-green-500 mx-auto mb-2" />
+              <div className="text-2xl font-bold text-slate-800">{flips}</div>
+              <div className="text-xs text-green-600 font-bold uppercase">Flips</div>
+            </div>
           </div>
-          
-          {/* Back Button */}
-          <div className="flex justify-center pt-6">
-            <Button 
-              onClick={handleBack} 
-              size="lg" 
-              className="rounded-2xl px-16 py-7 text-xl font-black bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 hover:from-purple-700 hover:via-pink-700 hover:to-blue-700 text-white shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-110 border-4 border-purple-300/50 uppercase tracking-wide"
-            >
-              <ArrowLeft className="mr-3 h-7 w-7" />
-              Back to Games
-            </Button>
-          </div>
+
+          <Button 
+            onClick={handleBack} 
+            className="w-full h-12 text-base font-bold rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg transition-transform hover:scale-[1.02] mt-auto"
+            style={{ color: 'black' }}
+          >
+            Back to Games
+          </Button>
         </div>
       </div>
     );
   }
 
+  // 2. Active Game Screen
   const mins = Math.floor(timeLeft / 60);
   const secs = timeLeft % 60;
-  const urgent = timeLeft < 30;
-
+  
   return (
-    <div className="h-screen w-full overflow-hidden bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 flex flex-col">
-      {/* Row 1: Header - Compact height */}
-      <div className="flex items-center justify-between px-6 py-2 bg-white/80 backdrop-blur-sm shadow-sm shrink-0">
-        <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-            Memory Match
-          </h1>
-          <p className="text-sm text-gray-600">Find matching pairs to win!</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="inline-flex items-center gap-2 bg-purple-100 text-purple-700 px-3 py-1 rounded-full font-semibold text-sm">
-            <span>🧠</span>
-            {correct} / 4
+    <div className="min-h-screen w-full bg-slate-50 flex flex-col font-sans bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:20px_20px]">
+      
+      {/* Header */}
+      <header className="px-6 py-4 bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-10">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Button onClick={handleBack} variant="ghost" size="icon" className="h-10 w-10 rounded-full hover:bg-slate-100">
+              <ArrowLeft className="h-6 w-6 text-slate-700" />
+            </Button>
+            <div>
+              <h1 className="text-xl font-bold text-slate-900">Memory Match</h1>
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
+                <span>Pair the symbols</span>
+              </div>
+            </div>
           </div>
-          <div className={`flex items-center gap-2 px-3 py-1 rounded-xl font-bold text-sm transition-all ${
-            urgent 
-              ? 'bg-red-100 text-red-600 animate-pulse shadow-lg' 
-              : 'bg-green-100 text-green-600'
-          }`}>
-            <span>{urgent ? '⚠️' : '⏰'}</span>
-            <span>{mins}:{secs.toString().padStart(2, '0')}</span>
-          </div>
-          <Button 
-            onClick={handleBack} 
-            variant="outline" 
-            size="sm"
-            className="rounded-xl hover:bg-gray-50"
-          >
-            <ArrowLeft className="mr-1 h-3 w-3" />
-            Back
-          </Button>
-        </div>
-      </div>
 
-      {/* Row 2-5: Game Board - 4 rows with 2 cards each */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-4 gap-4 min-h-0 overflow-auto">
-        {[0, 1, 2, 3].map((rowIndex) => (
-          <div key={rowIndex} className="flex gap-4 w-full max-w-[600px]">
-            {cards.slice(rowIndex * 2, rowIndex * 2 + 2).map((card) => {
+          <div className="flex items-center gap-3">
+            {isPreviewing && (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-yellow-100 text-yellow-700 rounded-full text-xs font-bold animate-pulse border border-yellow-200">
+                <Eye className="w-3.5 h-3.5" />
+                <span>MEMORIZE</span>
+              </div>
+            )}
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-full font-mono font-bold text-sm border ${
+              timeLeft < 30 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-white text-slate-700 border-slate-200 shadow-sm'
+            }`}>
+              <Timer className="w-4 h-4" />
+              <span>{mins}:{secs.toString().padStart(2, '0')}</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Game Board - Centered & Framed */}
+      <main className="flex-1 flex items-center justify-center p-4 sm:p-8">
+        <div className="w-full max-w-4xl bg-white/60 backdrop-blur-xl rounded-[2rem] border border-white/50 shadow-xl p-4 sm:p-8">
+          
+          {/* Grid Container */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8 mx-auto max-w-2xl">
+            {cards.map((card) => {
               const symbol = SYMBOLS[card.symbolIndex];
               const IconComponent = symbol.icon;
               
               return (
-                <Card 
-                  key={card.id} 
-                  className={`
-                    cursor-pointer transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl
-                    flex-1 aspect-square flex items-center justify-center min-h-0
-                    ${card.isFlipped || card.isMatched 
-                      ? `${symbol.bg} ${symbol.color} border-2 border-purple-200` 
-                      : 'bg-gradient-to-br from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 border-2 border-purple-300'
-                    }
-                    ${card.isMatched ? 'ring-4 ring-green-400 ring-opacity-50 animate-bounce' : ''}
-                    ${flippedCards.includes(card.id) && !card.isMatched ? 'animate-pulse ring-2 ring-blue-400' : ''}
-                  `}
+                <div 
+                  key={card.id}
                   onClick={() => handleCardClick(card.id)}
+                  className={`
+                    relative aspect-square cursor-pointer perspective-1000 group
+                    ${card.isMatched ? 'pointer-events-none' : ''}
+                  `}
                 >
-                  <div className="flex items-center justify-center w-full h-full p-4">
-                    {card.isFlipped || card.isMatched ? (
-                      <IconComponent className="w-16 h-16 sm:w-20 sm:h-20 drop-shadow-sm" />
-                    ) : (
-                      <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white bg-opacity-30 rounded-full flex items-center justify-center backdrop-blur-sm">
-                        <span className="text-white font-bold text-3xl sm:text-4xl drop-shadow-md">?</span>
+                  <div className={`
+                    w-full h-full rounded-2xl shadow-sm transition-all duration-500 transform-style-3d
+                    flex items-center justify-center border-b-4
+                    ${card.isMatched ? 'opacity-0 scale-90' : 'hover:-translate-y-1 hover:shadow-md'}
+                    ${card.isFlipped 
+                      ? 'bg-white border-slate-200 rotate-y-180' 
+                      : 'bg-indigo-500 border-indigo-700'
+                    }
+                  `}>
+                    {card.isFlipped ? (
+                      <div className={`p-3 rounded-xl ${symbol.bg} ${symbol.color} animate-in zoom-in duration-300`}>
+                        <IconComponent className="w-8 h-8 sm:w-12 sm:h-12" strokeWidth={2.5} />
                       </div>
+                    ) : (
+                      <span className="text-4xl sm:text-5xl font-bold text-white/20 select-none">?</span>
                     )}
                   </div>
-                </Card>
+                </div>
               );
             })}
           </div>
-        ))}
-      </div>
 
-      {/* Last Row: Stats Cards */}
-      <div className="px-6 py-4 bg-gradient-to-r from-purple-100/50 via-pink-100/50 to-blue-100/50 backdrop-blur-sm shadow-lg shrink-0 border-t-2 border-purple-200">
-        <div className="flex items-center gap-4 max-w-4xl mx-auto">
-          {/* Stats Cards */}
-          <Card className="flex-1 p-4 bg-gradient-to-br from-blue-50 to-blue-100 text-center shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-blue-200 hover:border-blue-400 transform hover:scale-105">
-            <div className="text-3xl mb-2 filter drop-shadow-sm">🔄</div>
-            <div className="text-xs font-bold text-blue-700 mb-1 uppercase tracking-wide">Total Flips</div>
-            <div className="text-3xl font-black text-blue-800">{flips}</div>
-          </Card>
-          
-          <Card className="flex-1 p-4 bg-gradient-to-br from-green-50 to-green-100 text-center shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-green-200 hover:border-green-400 transform hover:scale-105">
-            <div className="text-3xl mb-2 filter drop-shadow-sm">✅</div>
-            <div className="text-xs font-bold text-green-700 mb-1 uppercase tracking-wide">Correct</div>
-            <div className="text-3xl font-black text-green-700">{correct}</div>
-          </Card>
-          
-          <Card className="flex-1 p-4 bg-gradient-to-br from-red-50 to-red-100 text-center shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-red-200 hover:border-red-400 transform hover:scale-105">
-            <div className="text-3xl mb-2 filter drop-shadow-sm">❌</div>
-            <div className="text-xs font-bold text-red-700 mb-1 uppercase tracking-wide">Wrong</div>
-            <div className="text-3xl font-black text-red-700">{wrong}</div>
-          </Card>
-          
-          <Card className="flex-1 p-4 bg-gradient-to-br from-purple-50 to-purple-100 text-center shadow-lg hover:shadow-xl transition-all duration-300 border-2 border-purple-200 hover:border-purple-400 transform hover:scale-105">
-            <div className="text-3xl mb-2 filter drop-shadow-sm">📊</div>
-            <div className="text-xs font-bold text-purple-700 mb-1 uppercase tracking-wide">Progress</div>
-            <div className="text-3xl font-black text-purple-700">{Math.round((correct / 4) * 100)}%</div>
-          </Card>
+        </div>
+      </main>
 
-          {/* Submit Button */}
+      {/* Footer Stats */}
+      <footer className="bg-white border-t border-slate-200 py-4 px-6 shrink-0">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex gap-8 text-center sm:text-left">
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Flips</div>
+              <div className="text-2xl font-black text-slate-800">{flips}</div>
+            </div>
+            <div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Matched</div>
+              <div className="text-2xl font-black text-emerald-600">{correct} / 4</div>
+            </div>
+          </div>
+          
           <Button 
-            onClick={handleSubmit} 
             size="lg"
-            className="rounded-xl px-6 py-6 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg hover:shadow-2xl transition-all duration-200 transform hover:scale-110 whitespace-nowrap border-2 border-purple-400" 
-            disabled={isSubmitting}
+            onClick={handleSubmit}
+            disabled={correct < 4 || isSubmitting}
+            className={`
+              w-full sm:w-auto rounded-xl font-bold shadow-lg transition-all
+              ${correct === 4 
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white hover:scale-105' 
+                : 'bg-slate-100 text-slate-400'
+              }
+            `}
           >
-            {isSubmitting ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                <span className="text-sm font-bold text-white">Submitting...</span>
-              </>
-            ) : (
-              <>
-                <span className="mr-2 text-xl">🎯</span>
-                <span className="text-sm font-bold text-white">Submit</span>
-              </>
-            )}
+            {isSubmitting ? 'Saving...' : correct === 4 ? 'Finish Game' : 'Match All to Finish'}
           </Button>
         </div>
-      </div>
+      </footer>
     </div>
   );
 }

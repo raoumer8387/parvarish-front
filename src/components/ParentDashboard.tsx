@@ -286,29 +286,18 @@ export function ParentDashboard() {
       <div className="mb-6 lg:mb-8">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
           <h1 className="text-[#2D5F3F] text-2xl sm:text-3xl lg:text-4xl">Welcome, Parent</h1>
-          <div className="flex gap-2">
-            <Button
-              onClick={handleRefreshData}
-              variant="outline"
-              className="bg-white hover:bg-gray-50 text-[#2D5F3F] rounded-xl font-medium"
-              disabled={loadingLacking}
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loadingLacking ? 'animate-spin' : ''}`} />
-              Refresh Data
-            </Button>
-            <Button
-              onClick={() => handleOpenBehaviorCheckIn()}
-              className="bg-gradient-to-r from-[#A8E6CF] to-[#8BD4AE] hover:from-[#8BD4AE] hover:to-[#A8E6CF] text-[#2D5F3F] rounded-xl font-medium relative"
-            >
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Daily Check-in
-              {children.filter(c => c.needsCheckIn).length > 0 && (
-                <span className="absolute -top-2 -right-2 bg-orange-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                  {children.filter(c => c.needsCheckIn).length}
-                </span>
-              )}
-            </Button>
-          </div>
+          <Button
+            onClick={() => handleOpenBehaviorCheckIn()}
+            className="bg-gradient-to-r from-[#A8E6CF] to-[#8BD4AE] hover:from-[#8BD4AE] hover:to-[#A8E6CF] text-[#2D5F3F] rounded-xl font-medium relative"
+          >
+            <CheckCircle className="h-4 w-4 mr-2" />
+            Daily Check-in
+            {children.filter(c => c.needsCheckIn).length > 0 && (
+              <span className="absolute -top-2 -right-2 bg-orange-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                {children.filter(c => c.needsCheckIn).length}
+              </span>
+            )}
+          </Button>
         </div>
         <div className="flex items-start gap-2 bg-white/60 p-3 sm:p-4 rounded-2xl border-l-4 border-[#A8E6CF]">
           <span className="text-xl sm:text-2xl">💡</span>
@@ -334,7 +323,7 @@ export function ParentDashboard() {
           children.map((child) => (
             <Card 
                 key={child.id} 
-                className={`p-6 hover:shadow-xl transition-shadow rounded-3xl border-2 ${selectedChildForTasks === child.id ? 'border-[#A8E6CF]' : 'border-transparent'}`}
+                className={`relative p-6 hover:shadow-xl transition-shadow rounded-3xl border-2 ${selectedChildForTasks === child.id ? 'border-[#A8E6CF]' : 'border-transparent'}`}
                 onClick={() => setSelectedChildForTasks(child.id)}
             >
               {/* Check-in Status Badge */}
@@ -364,7 +353,7 @@ export function ParentDashboard() {
                 <div className="mb-4">
                   <Button 
                     onClick={() => handleOpenBehaviorCheckIn(child.id)}
-                    className="w-full bg-gradient-to-r from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 text-white rounded-xl font-medium"
+                    className="!bg-gradient-to-r !from-orange-400 !to-orange-500 !text-white hover:!from-orange-500 hover:!to-orange-600 rounded-xl font-semibold transition-colors hover:shadow-md !shadow-sm"
                     size="sm"
                   >
                     <CheckCircle className="h-4 w-4 mr-2" />
