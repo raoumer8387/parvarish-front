@@ -208,8 +208,18 @@ const ActivityHistoryPage: React.FC = () => {
 
   const stats = activityData.stats;
 
+  const tabBaseClass =
+    'flex-1 min-w-[110px] border rounded-md transition-all text-black';
+  const tabActiveClass =
+    'border-primary bg-primary text-black shadow-md font-semibold';
+  const tabInactiveClass =
+    'border-transparent text-black hover:bg-muted/50';
+
+  const getTabClassName = (value: ActivityType) =>
+    `${tabBaseClass} ${selectedFilter === value ? tabActiveClass : tabInactiveClass}`;
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="container mx-auto p-6 min-h-screen flex flex-col gap-6">
       {/* Header with Child Selector */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -397,7 +407,7 @@ const ActivityHistoryPage: React.FC = () => {
       </div>
 
       {/* Activity Type Filters */}
-      <Card>
+      <Card className="flex flex-col h-[60vh] min-h-[360px]">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -409,19 +419,48 @@ const ActivityHistoryPage: React.FC = () => {
             <Filter className="w-5 h-5 text-muted-foreground" />
           </div>
         </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="all" className="w-full" onValueChange={(value: string) => setSelectedFilter(value as ActivityType)}>
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="all">All</TabsTrigger>
-              <TabsTrigger value="game">Games</TabsTrigger>
-              <TabsTrigger value="task">Tasks</TabsTrigger>
-              <TabsTrigger value="behavior">Behaviors</TabsTrigger>
-              <TabsTrigger value="chat">Chats</TabsTrigger>
+        <CardContent className="flex flex-col flex-1 min-h-0">
+          <Tabs
+            value={selectedFilter}
+            className="w-full"
+            onValueChange={(value: string) => setSelectedFilter(value as ActivityType)}
+          >
+            <TabsList className="flex w-full flex-wrap items-center gap-2 rounded-lg bg-muted/60 p-1">
+              <TabsTrigger
+                value="all"
+                className={getTabClassName('all')}
+              >
+                All
+              </TabsTrigger>
+              <TabsTrigger
+                value="game"
+                className={getTabClassName('game')}
+              >
+                Games
+              </TabsTrigger>
+              <TabsTrigger
+                value="task"
+                className={getTabClassName('task')}
+              >
+                Tasks
+              </TabsTrigger>
+              <TabsTrigger
+                value="behavior"
+                className={getTabClassName('behavior')}
+              >
+                Behaviors
+              </TabsTrigger>
+              <TabsTrigger
+                value="chat"
+                className={getTabClassName('chat')}
+              >
+                Chats
+              </TabsTrigger>
             </TabsList>
           </Tabs>
 
           {/* Timeline */}
-          <div className="mt-6 space-y-3 max-h-[600px] overflow-y-auto">
+          <div className="mt-6 space-y-3 flex-1 min-h-0 overflow-y-auto pr-2">
             {filteredTimeline.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />
