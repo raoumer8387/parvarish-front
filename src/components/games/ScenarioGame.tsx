@@ -101,46 +101,46 @@ export default function ScenarioGame() {
 
   if (isComplete && result) {
     return (
-      <div className="p-6 space-y-6">
-        <div className="text-center">
-          <div className="mb-6">
-            <div className="text-6xl mb-4">🎯</div>
-            <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-rose-600 to-pink-600 bg-clip-text text-transparent">
-              Game Complete!
-            </h1>
-            <p className="text-gray-600">Excellent decision-making skills!</p>
-          </div>
+      <div className="min-h-screen w-full bg-slate-50 flex items-center justify-center p-6 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:16px_16px]">
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-8 text-center space-y-6 border border-slate-100 animate-in zoom-in-95 duration-300 flex flex-col">
           
-          <div className="bg-gradient-to-r from-rose-500 to-pink-500 rounded-3xl p-8 text-white mb-6 shadow-xl">
-            <div className="text-6xl font-bold mb-2">{result.score.percentage}%</div>
-            <div className="text-2xl mb-4">{result.score.total_score} / {result.score.max_score}</div>
-            <p className="text-xl opacity-90">{result.completion_message}</p>
+          <div className="flex justify-center">
+            <div className="h-24 w-24 bg-rose-100 rounded-full flex items-center justify-center animate-bounce">
+              <span className="text-4xl">🎯</span>
+            </div>
           </div>
-          
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <Card className="p-4 bg-gradient-to-br from-blue-50 to-blue-100">
-              <div className="text-3xl mb-2">⏱️</div>
-              <div className="font-semibold">Time</div>
-              <div className="text-gray-600">{result.time_taken}s</div>
-            </Card>
-            <Card className="p-4 bg-gradient-to-br from-green-50 to-green-100">
-              <div className="text-3xl mb-2">❓</div>
-              <div className="font-semibold">Questions</div>
-              <div className="text-gray-600">{result.score.breakdown.questions_answered}</div>
-            </Card>
-            <Card className="p-4 bg-gradient-to-br from-purple-50 to-purple-100">
-              <div className="text-3xl mb-2">🎯</div>
-              <div className="font-semibold">Tasks</div>
-              <div className="text-gray-600">{result.tasks_generated}</div>
-            </Card>
+
+          <div className="space-y-2">
+            <h1 className="text-3xl font-black text-slate-900">Game Complete!</h1>
+            <p className="text-slate-600">Excellent decision-making skills!</p>
           </div>
-          
+
+          {/* Score Card */}
+          <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200">
+            <div className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">Total Score</div>
+            <div className="text-5xl font-black text-rose-600">{result.score.percentage}%</div>
+            <div className="text-slate-400 font-medium mt-1">{result.score.total_score} / {result.score.max_score} points earned</div>
+          </div>
+
+          {/* Stats Grid */}
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="p-4 rounded-xl bg-blue-50 border border-blue-100">
+              <div className="text-2xl mb-2">⏱️</div>
+              <div className="text-2xl font-bold text-slate-800">{result.time_taken}s</div>
+              <div className="text-xs text-blue-600 font-bold uppercase">Time</div>
+            </div>
+            <div className="p-4 rounded-xl bg-green-50 border border-green-100">
+              <div className="text-2xl mb-2">❓</div>
+              <div className="text-2xl font-bold text-slate-800">{result.score.breakdown.questions_answered}</div>
+              <div className="text-xs text-green-600 font-bold uppercase">Questions</div>
+            </div>
+          </div>
+
           <Button 
             onClick={handleBack} 
-            size="lg" 
-            className="rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-700 hover:to-pink-700 shadow-lg"
+            className="w-full h-12 text-base font-bold rounded-xl bg-rose-500 hover:bg-rose-600 text-white shadow-lg transition-transform hover:scale-[1.02] mt-auto"
+            style={{ color: 'black' }}
           >
-            <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Games
           </Button>
         </div>
