@@ -153,7 +153,7 @@ export function ParentDashboard() {
       {/* Welcome Header */}
       <div className="mb-6 lg:mb-8">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-          <h1 className="text-[#2D5F3F] text-2xl sm:text-3xl lg:text-4xl">Welcome, Ahmed</h1>
+          <h1 className="text-[#2D5F3F] text-2xl sm:text-3xl lg:text-4xl">Welcome, Parent</h1>
           <Button
             onClick={() => handleOpenBehaviorCheckIn()}
             className="bg-gradient-to-r from-[#A8E6CF] to-[#8BD4AE] hover:from-[#8BD4AE] hover:to-[#A8E6CF] text-[#2D5F3F] rounded-xl font-medium relative"
@@ -191,7 +191,7 @@ export function ParentDashboard() {
           children.map((child) => (
             <Card 
                 key={child.id} 
-                className={`p-6 hover:shadow-xl transition-shadow rounded-3xl border-2 ${selectedChildForTasks === child.id ? 'border-[#A8E6CF]' : 'border-transparent'}`}
+                className={`relative p-6 hover:shadow-xl transition-shadow rounded-3xl border-2 ${selectedChildForTasks === child.id ? 'border-[#A8E6CF]' : 'border-transparent'}`}
                 onClick={() => setSelectedChildForTasks(child.id)}
             >
               {/* Check-in Status Badge */}
@@ -221,7 +221,7 @@ export function ParentDashboard() {
                 <div className="mb-4">
                   <Button 
                     onClick={() => handleOpenBehaviorCheckIn(child.id)}
-                    className="w-full bg-gradient-to-r from-orange-400 to-orange-500 hover:from-orange-500 hover:to-orange-600 text-white rounded-xl font-medium"
+                    className="!bg-gradient-to-r !from-orange-400 !to-orange-500 !text-white hover:!from-orange-500 hover:!to-orange-600 rounded-xl font-semibold transition-colors hover:shadow-md !shadow-sm"
                     size="sm"
                   >
                     <CheckCircle className="h-4 w-4 mr-2" />
