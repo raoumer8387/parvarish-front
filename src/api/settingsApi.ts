@@ -39,7 +39,7 @@ export const getParentProfile = async () => {
   return data;
 };
 
-export const updateParentProfile = async (profile) => {
+export const updateParentProfile = async (profile: any) => {
   const { data } = await axiosInstance.put('/api/v1/settings/parent/profile', profile);
   return data;
 };
@@ -50,22 +50,22 @@ export const getAllChildren = async () => {
   return data;
 };
 
-export const getChild = async (childId) => {
+export const getChild = async (childId: number) => {
   const { data } = await axiosInstance.get(`/api/v1/settings/children/${childId}`);
   return data;
 };
 
-export const addChild = async (child) => {
+export const addChild = async (child: any) => {
   const { data } = await axiosInstance.post('/api/v1/settings/children', child);
   return data;
 };
 
-export const updateChild = async (childId, child) => {
+export const updateChild = async (childId: number, child: any) => {
   const { data } = await axiosInstance.put(`/api/v1/settings/children/${childId}`, child);
   return data;
 };
 
-export const deleteChild = async (childId) => {
+export const deleteChild = async (childId: number) => {
   const { data } = await axiosInstance.delete(`/api/v1/settings/children/${childId}`);
   return data;
 };

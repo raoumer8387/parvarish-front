@@ -1,4 +1,4 @@
-import { Home, TrendingUp, MessageCircle, Gamepad2, Settings, Menu } from 'lucide-react';
+import { Home, TrendingUp, MessageCircle, Gamepad2, Settings, Menu, History } from 'lucide-react';
 import { Sheet, SheetContent, SheetTitle, SheetDescription, SheetTrigger } from './ui/sheet';
 import { Button } from './ui/button';
 import { useState } from 'react';
@@ -16,6 +16,7 @@ export function AppSidebar({ currentPage, onNavigate, userType = 'parent' }: App
   const parentMenuItems = [
     { id: 'dashboard', label: 'Home', icon: Home },
     { id: 'progress', label: 'Progress', icon: TrendingUp },
+    { id: 'activity-history', label: 'Activity History', icon: History },
     { id: 'chatbot', label: 'Chatbot', icon: MessageCircle },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
