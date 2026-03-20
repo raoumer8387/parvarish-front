@@ -1,0 +1,2 @@
+. .\activate-venv.ps1 -VenvPath "venv"
+npm run dev

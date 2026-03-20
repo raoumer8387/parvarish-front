@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card } from './ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Send, Bot, User, Loader2 } from 'lucide-react';
+import { Send, Bot, User, Loader2, Mic, Square, Check, X } from 'lucide-react';
 import * as chatApi from '../api/chatApi';
 import * as behaviorApi from '../api/behaviorApi';
 import TaskGeneration from './TaskGeneration';
@@ -30,8 +30,14 @@ export function ChatbotInterface() {
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedAudioBlob, setRecordedAudioBlob] = useState<Blob | null>(null);
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
   const [lastAiMessage, setLastAiMessage] = useState<Message | null>(null);
   const [thinkingMessageId, setThinkingMessageId] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioStreamRef = useRef<MediaStream | null>(null);
 
   // Fetch children list on mount
   useEffect(() => {
@@ -83,14 +89,156 @@ export function ChatbotInterface() {
     fetchHistory();
   }, [selectedChildId]);
 
-  // Cleanup thinking indicator on unmount
+  // Cleanup streams and preview URL on unmount
   useEffect(() => {
     return () => {
       if (thinkingMessageId) {
         setThinkingMessageId(null);
       }
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (recordedAudioUrl) {
+        URL.revokeObjectURL(recordedAudioUrl);
+      }
     };
-  }, [thinkingMessageId]);
+  }, [thinkingMessageId, recordedAudioUrl]);
+
+  const clearRecordedAudio = () => {
+    if (recordedAudioUrl) {
+      URL.revokeObjectURL(recordedAudioUrl);
+    }
+    setRecordedAudioBlob(null);
+    setRecordedAudioUrl(null);
+  };
+
+  const handleSendRecordedAudio = async () => {
+    if (!recordedAudioBlob || isLoading || !!thinkingMessageId) return;
+
+    const blobToSend = recordedAudioBlob;
+    clearRecordedAudio();
+    await sendVoiceBlob(blobToSend);
+  };
+
+  const sendVoiceBlob = async (audioBlob: Blob) => {
+    const newUserMessage: Message = {
+      role: 'user',
+      content: '🎤 Voice message',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    const thinkingId = `thinking-${Date.now()}`;
+    const thinkingMessage: Message = {
+      role: 'thinking',
+      content: '',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      isTemporary: true,
+      id: thinkingId,
+    };
+
+    setMessages(prev => [...prev, newUserMessage, thinkingMessage]);
+    setThinkingMessageId(thinkingId);
+    setIsLoading(true);
+    setLastAiMessage(null);
+
+    try {
+      const response = await chatApi.sendVoiceMessage(audioBlob, selectedChildId);
+
+      const aiResponse: Message = {
+        role: 'ai',
+        content: response.response,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        tags: (response as any).tags,
+      };
+
+      setMessages(prev => prev.map(msg => (msg.id === thinkingId ? aiResponse : msg)));
+      setLastAiMessage(aiResponse);
+    } catch (err) {
+      console.error('Failed to send voice message:', err);
+
+      const errorMessage: Message = {
+        role: 'ai',
+        content: 'Sorry, I could not process your voice message. Please try again.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      setMessages(prev => prev.map(msg => (msg.id === thinkingId ? errorMessage : msg)));
+    } finally {
+      setIsLoading(false);
+      setThinkingMessageId(null);
+    }
+  };
+
+  const handleStartRecording = async () => {
+    if (isLoading || !!thinkingMessageId || isRecording) return;
+
+    if (recordedAudioBlob || recordedAudioUrl) {
+      clearRecordedAudio();
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      const unsupportedMessage: Message = {
+        role: 'ai',
+        content: 'Voice recording is not supported in this browser.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages(prev => [...prev, unsupportedMessage]);
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        try {
+          const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+          if (audioBlob.size > 0) {
+            const previewUrl = URL.createObjectURL(audioBlob);
+            setRecordedAudioBlob(audioBlob);
+            setRecordedAudioUrl(previewUrl);
+          }
+        } finally {
+          if (audioStreamRef.current) {
+            audioStreamRef.current.getTracks().forEach(track => track.stop());
+            audioStreamRef.current = null;
+          }
+          mediaRecorderRef.current = null;
+          audioChunksRef.current = [];
+          setIsRecording(false);
+        }
+      };
+
+      recorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Failed to access microphone:', err);
+      const micErrorMessage: Message = {
+        role: 'ai',
+        content: 'Microphone access was denied or unavailable.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages(prev => [...prev, micErrorMessage]);
+      setIsRecording(false);
+    }
+  };
+
+  const handleStopRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state === 'recording') {
+      recorder.stop();
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading || thinkingMessageId) return;
@@ -268,13 +416,14 @@ export function ChatbotInterface() {
             <Input
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+              onKeyDown={(e) => e.key === 'Enter' && !isRecording && handleSendMessage()}
               placeholder={getPlaceholderText()}
               className="flex-1 rounded-xl text-sm sm:text-base"
+              disabled={isRecording}
             />
             <Button
               onClick={handleSendMessage}
-              disabled={isLoading || !inputMessage.trim() || !!thinkingMessageId}
+              disabled={isLoading || !inputMessage.trim() || !!thinkingMessageId || isRecording}
               className="bg-[#A8E6CF] hover:bg-[#8BD4AE] text-[#2D5F3F] rounded-xl px-3 sm:px-6"
             >
               {isLoading ? (
@@ -284,11 +433,45 @@ export function ChatbotInterface() {
               )}
             </Button>
             <Button
+              onClick={isRecording ? handleStopRecording : handleStartRecording}
               variant="outline"
+              disabled={isLoading || !!thinkingMessageId || !!recordedAudioBlob}
               className="rounded-xl px-3 sm:px-6 border-2 border-[#B3E5FC] text-[#1E4F6F] hover:bg-[#B3E5FC]/10"
             >
+              {isRecording ? (
+                <Square className="h-4 w-4 sm:h-5 sm:w-5 text-red-500" />
+              ) : (
+                <Mic className="h-4 w-4 sm:h-5 sm:w-5" />
+              )}
             </Button>
           </div>
+          {recordedAudioUrl && (
+            <div className="mt-3 p-3 rounded-xl bg-white border border-gray-200 flex flex-col sm:flex-row sm:items-center gap-3">
+              <audio controls src={recordedAudioUrl} className="w-full sm:flex-1" />
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleSendRecordedAudio}
+                  disabled={isLoading || !!thinkingMessageId}
+                  className="bg-green-500 hover:bg-green-600 text-white rounded-xl px-3"
+                  aria-label="Send recorded voice message"
+                >
+                  <Check className="h-4 w-4 sm:h-5 sm:w-5" />
+                </Button>
+                <Button
+                  onClick={clearRecordedAudio}
+                  variant="outline"
+                  disabled={isLoading || !!thinkingMessageId}
+                  className="rounded-xl px-3 border-2 border-red-300 text-red-600 hover:bg-red-50"
+                  aria-label="Discard recorded voice message"
+                >
+                  <X className="h-4 w-4 sm:h-5 sm:w-5" />
+                </Button>
+              </div>
+            </div>
+          )}
+          {isRecording && (
+            <p className="text-xs text-red-600 mt-2 text-center">Recording... tap stop to preview voice message.</p>
+          )}
           <p className="text-xs text-gray-500 mt-2 text-center">
             AI provides guidance based on Quran and Hadith. Always verify with scholars.
           </p>
