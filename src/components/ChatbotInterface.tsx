@@ -3,11 +3,26 @@ import { Card } from './ui/card';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Send, Bot, User, Loader2, Mic, Square, Check, X } from 'lucide-react';
+import { Send, Bot, User, Loader2, Mic, Square, Check, X, Paperclip } from 'lucide-react';
 import * as chatApi from '../api/chatApi';
 import * as behaviorApi from '../api/behaviorApi';
 import TaskGeneration from './TaskGeneration';
 import { ThinkingIndicator } from './ThinkingIndicator';
+
+const ALLOWED_ATTACHMENT_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/gif',
+  'application/pdf',
+]);
+
+function isAllowedAttachmentFile(file: File): boolean {
+  if (file.type && ALLOWED_ATTACHMENT_TYPES.has(file.type)) return true;
+  const n = file.name.toLowerCase();
+  return /\.(png|jpe?g|webp|gif|pdf)$/.test(n);
+}
 
 interface Message {
   role: 'user' | 'ai' | 'thinking';
@@ -38,6 +53,12 @@ export function ChatbotInterface() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioStreamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const MAX_ATTACHMENT_FILES = 5;
+  const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [attachmentHint, setAttachmentHint] = useState<string | null>(null);
 
   // Fetch children list on mount
   useEffect(() => {
@@ -110,6 +131,47 @@ export function ChatbotInterface() {
     }
     setRecordedAudioBlob(null);
     setRecordedAudioUrl(null);
+  };
+
+  const addPendingFiles = (fileList: FileList | File[]) => {
+    const incoming = Array.from(fileList);
+    setAttachmentHint(null);
+
+    setPendingFiles(prev => {
+      const next: File[] = [...prev];
+      const rejected: string[] = [];
+
+      for (const file of incoming) {
+        if (next.length >= MAX_ATTACHMENT_FILES) {
+          rejected.push(`Maximum ${MAX_ATTACHMENT_FILES} files allowed`);
+          break;
+        }
+        if (!isAllowedAttachmentFile(file)) {
+          rejected.push(`${file.name} (use PNG, JPEG, WebP, GIF, or PDF)`);
+          continue;
+        }
+        if (file.size > MAX_ATTACHMENT_BYTES) {
+          rejected.push(`${file.name} (max 15 MB each)`);
+          continue;
+        }
+        next.push(file);
+      }
+
+      if (rejected.length) {
+        setAttachmentHint(rejected.join(' · '));
+      }
+      return next;
+    });
+  };
+
+  const removePendingFile = (index: number) => {
+    setPendingFiles(prev => prev.filter((_, i) => i !== index));
+    setAttachmentHint(null);
+  };
+
+  const openFilePicker = () => {
+    setAttachmentHint(null);
+    fileInputRef.current?.click();
   };
 
   const handleSendRecordedAudio = async () => {
@@ -241,15 +303,21 @@ export function ChatbotInterface() {
   };
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || isLoading || thinkingMessageId) return;
+    const trimmed = inputMessage.trim();
+    const filesToSend = [...pendingFiles];
+    if ((!trimmed && filesToSend.length === 0) || isLoading || thinkingMessageId) return;
+
+    const namesLine =
+      filesToSend.length > 0 ? `📎 ${filesToSend.map(f => f.name).join(', ')}` : '';
+    const displayContent =
+      trimmed && namesLine ? `${trimmed}\n\n${namesLine}` : trimmed || namesLine;
 
     const newUserMessage: Message = {
       role: 'user',
-      content: inputMessage,
+      content: displayContent,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    // Create thinking indicator message
     const thinkingId = `thinking-${Date.now()}`;
     const thinkingMessage: Message = {
       role: 'thinking',
@@ -259,43 +327,42 @@ export function ChatbotInterface() {
       id: thinkingId,
     };
 
-    // Add user message and thinking indicator immediately
     setMessages(prev => [...prev, newUserMessage, thinkingMessage]);
     setThinkingMessageId(thinkingId);
-    
-    const userInput = inputMessage;
+
     setInputMessage('');
+    setPendingFiles([]);
+    setAttachmentHint(null);
     setIsLoading(true);
     setLastAiMessage(null);
 
     try {
-      // Send message with optional child context
-      const response = await chatApi.sendChatMessage(userInput, selectedChildId);
-      
+      const response =
+        filesToSend.length > 0
+          ? await chatApi.sendChatWithAttachments(filesToSend, trimmed, selectedChildId)
+          : await chatApi.sendChatMessage(trimmed, selectedChildId);
+
       const aiResponse: Message = {
         role: 'ai',
         content: response.response,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        tags: (response as any).tags, // Assuming tags might come back
+        tags: (response as any).tags,
       };
-      
-      // Replace thinking indicator with AI response
-      setMessages(prev => prev.map(msg => 
-        msg.id === thinkingId ? aiResponse : msg
-      ));
+
+      setMessages(prev => prev.map(msg => (msg.id === thinkingId ? aiResponse : msg)));
       setLastAiMessage(aiResponse);
     } catch (err) {
       console.error('Failed to send message:', err);
+      const detail = err instanceof Error ? err.message : '';
       const errorMessage: Message = {
         role: 'ai',
-        content: 'Sorry, I encountered an error. Please try again.',
+        content: detail
+          ? `Sorry, something went wrong: ${detail}`
+          : 'Sorry, I encountered an error. Please try again.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
-      
-      // Replace thinking indicator with error message
-      setMessages(prev => prev.map(msg => 
-        msg.id === thinkingId ? errorMessage : msg
-      ));
+
+      setMessages(prev => prev.map(msg => (msg.id === thinkingId ? errorMessage : msg)));
     } finally {
       setIsLoading(false);
       setThinkingMessageId(null);
@@ -412,18 +479,65 @@ export function ChatbotInterface() {
 
         {/* Input Area */}
         <div className="p-3 sm:p-4 bg-gray-50 border-t">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            multiple
+            accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,application/pdf,.pdf"
+            onChange={(e) => {
+              const list = e.target.files;
+              if (list?.length) addPendingFiles(list);
+              e.target.value = '';
+            }}
+          />
+          {pendingFiles.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {pendingFiles.map((file, index) => (
+                <span
+                  key={`${file.name}-${index}`}
+                  className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-lg bg-white border border-gray-200 text-xs sm:text-sm text-gray-700 max-w-full"
+                >
+                  <span className="truncate max-w-[180px] sm:max-w-[240px]" title={file.name}>
+                    {file.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removePendingFile(index)}
+                    className="p-1 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-800"
+                    aria-label={`Remove ${file.name}`}
+                  >
+                    <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          {attachmentHint && (
+            <p className="text-xs text-amber-700 mb-2">{attachmentHint}</p>
+          )}
           <div className="flex gap-2 sm:gap-3">
             <Input
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !isRecording && handleSendMessage()}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || isRecording) return;
+                if (!inputMessage.trim() && pendingFiles.length === 0) return;
+                e.preventDefault();
+                handleSendMessage();
+              }}
               placeholder={getPlaceholderText()}
               className="flex-1 rounded-xl text-sm sm:text-base"
               disabled={isRecording}
             />
             <Button
               onClick={handleSendMessage}
-              disabled={isLoading || !inputMessage.trim() || !!thinkingMessageId || isRecording}
+              disabled={
+                isLoading ||
+                (!inputMessage.trim() && pendingFiles.length === 0) ||
+                !!thinkingMessageId ||
+                isRecording
+              }
               className="bg-[#A8E6CF] hover:bg-[#8BD4AE] text-[#2D5F3F] rounded-xl px-3 sm:px-6"
             >
               {isLoading ? (
@@ -431,6 +545,33 @@ export function ChatbotInterface() {
               ) : (
                 <Send className="h-4 w-4 sm:h-5 sm:w-5" />
               )}
+            </Button>
+            <Button
+              type="button"
+              onClick={openFilePicker}
+              variant="outline"
+              disabled={
+                isLoading || !!thinkingMessageId || !!recordedAudioBlob || isRecording
+              }
+              className="rounded-xl px-3 sm:px-6 border-2 border-[#C8E6C9] text-[#2D5F3F] hover:bg-[#C8E6C9]/20"
+              aria-label={
+                pendingFiles.length
+                  ? `Attach files — ${pendingFiles.length} selected`
+                  : 'Attach images or PDF'
+              }
+              title="Attach images or PDF (max 5, 15 MB each)"
+            >
+              <span className="relative inline-flex items-center">
+                <Paperclip className="h-4 w-4 sm:h-5 sm:w-5" />
+                {pendingFiles.length > 0 && (
+                  <span
+                    className="absolute -top-2 -right-2 min-w-[1.125rem] h-[1.125rem] px-0.5 rounded-full bg-[#2D5F3F] text-white text-[10px] leading-none flex items-center justify-center font-medium"
+                    aria-hidden
+                  >
+                    {pendingFiles.length}
+                  </span>
+                )}
+              </span>
             </Button>
             <Button
               onClick={isRecording ? handleStopRecording : handleStartRecording}
