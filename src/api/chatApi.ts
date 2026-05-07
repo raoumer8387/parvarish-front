@@ -11,6 +11,12 @@ export interface ChatRequest {
 export interface ChatResponse {
   response: string;
   user_id: string;
+  recommended_videos?: RecommendedVideo[];
+}
+
+export interface RecommendedVideo {
+  title: string;
+  url: string;
 }
 
 export interface VoiceChatResponse extends ChatResponse {

@@ -9,6 +9,8 @@ import * as behaviorApi from '../api/behaviorApi';
 import TaskGeneration from './TaskGeneration';
 import { ThinkingIndicator } from './ThinkingIndicator';
 
+type RecommendedVideo = chatApi.RecommendedVideo;
+
 const ALLOWED_ATTACHMENT_TYPES = new Set([
   'image/png',
   'image/jpeg',
@@ -29,6 +31,7 @@ interface Message {
   content: string;
   timestamp: string;
   tags?: string[];
+  recommendedVideos?: RecommendedVideo[];
   isTemporary?: boolean;
   id?: string;
 }
@@ -211,6 +214,7 @@ export function ChatbotInterface() {
         content: response.response,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         tags: (response as any).tags,
+        recommendedVideos: response.recommended_videos,
       };
 
       setMessages(prev => prev.map(msg => (msg.id === thinkingId ? aiResponse : msg)));
@@ -347,6 +351,7 @@ export function ChatbotInterface() {
         content: response.response,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         tags: (response as any).tags,
+        recommendedVideos: response.recommended_videos,
       };
 
       setMessages(prev => prev.map(msg => (msg.id === thinkingId ? aiResponse : msg)));
@@ -447,6 +452,32 @@ export function ChatbotInterface() {
                       }`}
                       >
                       <p className="whitespace-pre-line text-sm sm:text-base">{message.content}</p>
+                      {message.role === 'ai' && message.recommendedVideos?.length ? (
+                        <div className="mt-3 space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                            Recommended videos
+                          </p>
+                          <div className="space-y-2">
+                            {message.recommendedVideos.map((video) => (
+                              <a
+                                key={`${video.title}-${video.url}`}
+                                href={video.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex items-center gap-3 rounded-xl border border-[#C8E6C9] bg-[#F7FFF9] px-3 py-2 text-sm text-[#2D5F3F] transition-colors hover:bg-[#EAF8EE] focus:outline-none focus:ring-2 focus:ring-[#8BD4AE] focus:ring-offset-2"
+                              >
+                                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[#A8E6CF] text-[#2D5F3F]">
+                                  ▶
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block font-medium leading-snug">{video.title}</span>
+                                  <span className="block truncate text-xs text-gray-500">{video.url}</span>
+                                </span>
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                       <p
                           className={`text-xs mt-2 ${
                           message.role === 'user' ? 'text-[#2D5F3F]/70' : 'text-gray-500'
