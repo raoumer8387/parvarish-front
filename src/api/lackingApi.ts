@@ -179,3 +179,43 @@ export async function markNotificationRead(
     }
   );
 }
+
+/** Unified parent notification feed (REST + WebSocket same shape, except WS may omit `read`). */
+export type ParentNotificationType =
+  | 'lacking_alert'
+  | 'child_game_completed'
+  | 'daily_checkin_reminder'
+  | string;
+
+export interface ParentNotification {
+  id: string;
+  type: ParentNotificationType;
+  title: string;
+  body: string;
+  data: Record<string, unknown>;
+  created_at: string;
+  read: boolean;
+}
+
+export interface ParentNotificationsListResponse {
+  notifications: ParentNotification[];
+  total_count: number;
+  unread_count: number;
+}
+
+export async function fetchParentNotifications(
+  unreadOnly = false,
+  limit = 10
+): Promise<ParentNotificationsListResponse> {
+  const capped = Math.min(Math.max(limit, 1), 500);
+  const response = await axiosInstance.get('/api/v1/parent/notifications', {
+    params: { unread_only: unreadOnly, limit: capped },
+  });
+  return response.data;
+}
+
+export async function markParentNotificationRead(notificationId: string): Promise<void> {
+  await axiosInstance.post('/api/v1/parent/notifications/mark-read', {
+    notification_id: notificationId,
+  });
+}

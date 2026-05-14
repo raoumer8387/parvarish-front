@@ -7,11 +7,10 @@ import { useState, useEffect } from 'react';
 import { BehaviorTrackingPopup } from './BehaviorTrackingPopup';
 import * as behaviorApi from '../api/behaviorApi';
 import TaskList from './TaskList';
-import { NotificationTicker } from './NotificationTicker';
 import { LackingAnalysisSection } from './LackingAnalysisSection';
 import { GuidanceModal } from './GuidanceModal';
 import { TaskGenerationPanel } from './TaskGenerationPanel';
-import { fetchLackingAnalysis, LackingArea, Notification } from '../api/lackingApi';
+import { fetchLackingAnalysis, LackingArea } from '../api/lackingApi';
 
 interface ChildWithStats extends behaviorApi.ChildInfo {
   behaviorLevel?: number;
@@ -226,14 +225,6 @@ export function ParentDashboard() {
     setShowTaskPanel(true);
   };
 
-  const handleNotificationClick = (notification: Notification) => {
-    // Find the child and select them
-    const child = children.find(c => c.name === notification.child_name);
-    if (child) {
-      setSelectedChildForTasks(child.id);
-    }
-  };
-
   const handleChildSelectionChange = (childId: number) => {
     setSelectedChildForTasks(childId);
   };
@@ -241,12 +232,6 @@ export function ParentDashboard() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-[#FFF8E1] to-white pt-20 lg:pt-8">
-      {/* Notification Ticker */}
-      <NotificationTicker 
-        childId={selectedChildForTasks || undefined}
-        onNotificationClick={handleNotificationClick}
-      />
-      
       {/* Behavior Tracking Popup */}
       {showBehaviorPopup && parentId && (
         <BehaviorTrackingPopup

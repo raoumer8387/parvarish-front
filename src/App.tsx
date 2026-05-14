@@ -18,6 +18,7 @@ import MoodPickerGame from './components/games/MoodPickerGame';
 import ScenarioGame from './components/games/ScenarioGame';
 import IslamicQuizGame from './components/games/IslamicQuizGame';
 import { getUserType } from './api/auth';
+import { ParentNotificationBell } from './components/ParentNotificationBell';
 
 type UserType = 'parent' | 'child' | null;
 type Page = 'dashboard' | 'profiles' | 'progress' | 'chatbot' | 'activities' | 'settings' | 'games' | 'game' | 'activity-history';
@@ -308,7 +309,10 @@ export default function App() {
         {/* Main Content Area */}
         <div className="flex-1 w-full lg:ml-64 overflow-x-hidden overflow-y-auto">
           {/* Top bar with Logout */}
-          <div className="w-full flex justify-end p-4 sticky top-0 bg-gradient-to-br from-[#FFF8E1] to-white z-10">
+          <div className="w-full flex items-center justify-end gap-2 p-4 sticky top-0 bg-gradient-to-br from-[#FFF8E1] to-white z-10">
+            {userType === 'parent' && (
+              <ParentNotificationBell token={null} enabled={Boolean(isLoggedIn && userType === 'parent')} />
+            )}
             <Button variant="outline" onClick={handleLogout} className="rounded-lg">
               Logout
             </Button>
