@@ -51,7 +51,6 @@ export function ChatbotInterface() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordedAudioBlob, setRecordedAudioBlob] = useState<Blob | null>(null);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null);
-  const [lastAiMessage, setLastAiMessage] = useState<Message | null>(null);
   const [thinkingMessageId, setThinkingMessageId] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -221,10 +220,13 @@ export function ChatbotInterface() {
       setLastAiMessage(aiResponse);
     } catch (err) {
       console.error('Failed to send voice message:', err);
+      const detail = chatApi.getChatErrorMessage(err);
 
       const errorMessage: Message = {
         role: 'ai',
-        content: 'Sorry, I could not process your voice message. Please try again.',
+        content: detail
+          ? `Sorry, I could not process your voice message: ${detail}`
+          : 'Sorry, I could not process your voice message. Please try again.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
@@ -358,7 +360,7 @@ export function ChatbotInterface() {
       setLastAiMessage(aiResponse);
     } catch (err) {
       console.error('Failed to send message:', err);
-      const detail = err instanceof Error ? err.message : '';
+      const detail = chatApi.getChatErrorMessage(err);
       const errorMessage: Message = {
         role: 'ai',
         content: detail

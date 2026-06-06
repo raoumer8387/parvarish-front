@@ -84,11 +84,29 @@ const TaskList: React.FC<TaskListProps> = ({ childId, children = [] }) => {
   }, [fetchTasks]);
 
   const handleUpdateTaskStatus = async (taskId: number, status: 'completed' | 'incomplete' | 'pending', statusLabel: string) => {
+    const task =
+      pendingTasks.find((t) => t.id === taskId) ||
+      completedTasks.find((t) => t.id === taskId) ||
+      incompleteTasks.find((t) => t.id === taskId);
+
     try {
       await updateTaskStatus(taskId, status);
       toast.success(`Task marked as ${statusLabel}!`);
-      // Refresh tasks
-      fetchTasks();
+
+      if (task) {
+        const updated = { ...task, status };
+        setPendingTasks((prev) =>
+          status === 'pending' ? [...prev.filter((t) => t.id !== taskId), updated] : prev.filter((t) => t.id !== taskId)
+        );
+        setCompletedTasks((prev) =>
+          status === 'completed' ? [...prev.filter((t) => t.id !== taskId), updated] : prev.filter((t) => t.id !== taskId)
+        );
+        setIncompleteTasks((prev) =>
+          status === 'incomplete' ? [...prev.filter((t) => t.id !== taskId), updated] : prev.filter((t) => t.id !== taskId)
+        );
+      }
+
+      await fetchTasks();
     } catch (error) {
       console.error(`Failed to update task status to ${status}`, error);
       toast.error(`Failed to mark task as ${statusLabel}.`);

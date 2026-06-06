@@ -1,6 +1,9 @@
 // API Configuration
-// Change this URL when deploying to production
-export const API_BASE_URL = 'http://localhost:8000';
+// In dev, use same-origin + Vite proxy (vite.config.ts) to avoid CORS / Network Error.
+// Set VITE_API_BASE_URL in production (e.g. https://api.yourdomain.com).
+export const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ??
+  (import.meta.env.DEV ? '' : 'http://localhost:8000');
 
 // API Endpoints
 export const API_ENDPOINTS = {
@@ -16,7 +19,10 @@ export const API_ENDPOINTS = {
     profile: `${API_BASE_URL}/api/v1/parent/profile`,
     children: `${API_BASE_URL}/api/v1/parent/children`,
   },
-  chatbot: {
-    message: `${API_BASE_URL}/api/v1/chatbot/message`,
+  chat: {
+    message: `${API_BASE_URL}/api/v1/chat`,
+    history: `${API_BASE_URL}/api/v1/chat/history`,
+    voice: `${API_BASE_URL}/api/v1/chat/voice`,
+    attachments: `${API_BASE_URL}/api/v1/chat/with-attachments`,
   },
 };

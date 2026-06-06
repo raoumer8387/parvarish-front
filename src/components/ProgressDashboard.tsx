@@ -8,6 +8,19 @@ import { TrendingUp, Award, Target, Lightbulb, AlertCircle, Clock } from 'lucide
 import * as childProgressApi from '../api/childProgressApi';
 import * as behaviorApi from '../api/behaviorApi';
 
+function safeNum(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function safeRound(value: unknown, fallback = 0): number {
+  return Math.round(safeNum(value, fallback));
+}
+
+function hasValidChartData(data: { score?: number; value?: number }[]): boolean {
+  return data.length > 0 && data.every((d) => Number.isFinite(d.score ?? d.value));
+}
+
 export function ProgressDashboard() {
   const [selectedChildId, setSelectedChildId] = useState<number | null>(null);
   const [children, setChildren] = useState<behaviorApi.ChildInfo[]>([]);
@@ -274,38 +287,45 @@ export function ProgressDashboard() {
     );
   }
 
-  // Transform API data for charts
-  const behaviorData = dashboardData.behavior_summary.stats.categories 
-    ? Object.entries(dashboardData.behavior_summary.stats.categories).map(([category, score]) => ({
-        category,
-        score: Math.round(score as number)
-      }))
+  // Transform API data for charts (sanitize — Recharts crashes on NaN)
+  const behaviorData = dashboardData.behavior_summary.stats.categories
+    ? Object.entries(dashboardData.behavior_summary.stats.categories)
+        .map(([category, score]) => ({
+          category,
+          score: safeRound(score),
+        }))
+        .filter((d) => Number.isFinite(d.score))
     : [];
 
   const gameScoresData = dashboardData.games_summary.performance_by_game
-    ? Object.entries(dashboardData.games_summary.performance_by_game).map(([game, perf]) => {
-        const avgScores = (perf as any).avg_scores;
-        const scores = Object.values(avgScores) as number[];
-        const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-        return {
-          game,
-          score: Math.round(avgScore)
-        };
-      })
+    ? Object.entries(dashboardData.games_summary.performance_by_game)
+        .map(([game, perf]) => {
+          const avgScores = (perf as { avg_scores?: Record<string, number> }).avg_scores ?? {};
+          const scores = Object.values(avgScores)
+            .map((s) => safeNum(s))
+            .filter((n) => Number.isFinite(n));
+          const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+          return { game, score: Math.round(avgScore) };
+        })
+        .filter((d) => Number.isFinite(d.score))
     : [];
 
   const currentTraitsData = dashboardData.behavior_summary.stats.categories
-    ? Object.entries(dashboardData.behavior_summary.stats.categories).map(([trait, value]) => ({
-        trait: trait.charAt(0).toUpperCase() + trait.slice(1),
-        value: Math.round(value as number)
-      }))
+    ? Object.entries(dashboardData.behavior_summary.stats.categories)
+        .map(([trait, value]) => ({
+          trait: trait.charAt(0).toUpperCase() + trait.slice(1),
+          value: safeRound(value),
+        }))
+        .filter((d) => Number.isFinite(d.value))
     : [];
 
   const categoryAveragesData = dashboardData.games_summary.category_averages
-    ? Object.entries(dashboardData.games_summary.category_averages).map(([category, score]) => ({
-        category: category.charAt(0).toUpperCase() + category.slice(1),
-        score: Math.round(score as number)
-      }))
+    ? Object.entries(dashboardData.games_summary.category_averages)
+        .map(([category, score]) => ({
+          category: category.charAt(0).toUpperCase() + category.slice(1),
+          score: safeRound(score),
+        }))
+        .filter((d) => Number.isFinite(d.score))
     : [];
 
   return (
@@ -356,7 +376,11 @@ export function ProgressDashboard() {
         <Card className="p-4 sm:p-6 bg-gradient-to-br from-[#A8E6CF] to-[#8BD4AE] text-white rounded-2xl">
           <TrendingUp className="h-6 w-6 sm:h-8 sm:w-8 mb-2 sm:mb-3" />
           <p className="text-sm sm:text-base text-white/90 mb-1">Engagement Score</p>
-          <p className="text-2xl sm:text-3xl">{Math.round(dashboardData.progress_insights.overall_engagement_score)}%</p>
+          <p className="text-2xl sm:text-3xl">
+            {Number.isFinite(dashboardData.progress_insights.overall_engagement_score)
+              ? `${safeRound(dashboardData.progress_insights.overall_engagement_score)}%`
+              : '—'}
+          </p>
           <p className="text-xs sm:text-sm text-white/80 mt-2">Overall progress</p>
         </Card>
 
@@ -370,7 +394,11 @@ export function ProgressDashboard() {
         <Card className="p-4 sm:p-6 bg-gradient-to-br from-[#FFE082] to-[#FFD54F] text-[#6B5B00] rounded-2xl">
           <Target className="h-6 w-6 sm:h-8 sm:w-8 mb-2 sm:mb-3" />
           <p className="text-sm sm:text-base opacity-90 mb-1">Task Completion</p>
-          <p className="text-2xl sm:text-3xl">{Math.round(dashboardData.tasks_summary.completion_rate)}%</p>
+          <p className="text-2xl sm:text-3xl">
+            {Number.isFinite(dashboardData.tasks_summary.completion_rate)
+              ? `${safeRound(dashboardData.tasks_summary.completion_rate)}%`
+              : '—'}
+          </p>
           <p className="text-xs sm:text-sm opacity-80 mt-2">{dashboardData.tasks_summary.completed_tasks}/{dashboardData.tasks_summary.total_tasks} tasks</p>
         </Card>
 
@@ -388,10 +416,11 @@ export function ProgressDashboard() {
             {dashboardData.behavior_summary.needs_check_in ? 'Check-in Needed' : 'Behavior Score'}
           </p>
           <p className="text-2xl sm:text-3xl">
-            {dashboardData.behavior_summary.needs_check_in 
-              ? `${Math.round(dashboardData.behavior_summary.hours_since_last_check_in)}h`
-              : `${Math.round(dashboardData.behavior_summary.stats.avg_score)}%`
-            }
+            {dashboardData.behavior_summary.needs_check_in
+              ? `${safeRound(dashboardData.behavior_summary.hours_since_last_check_in)}h`
+              : Number.isFinite(dashboardData.behavior_summary.stats.avg_score)
+                ? `${safeRound(dashboardData.behavior_summary.stats.avg_score)}%`
+                : '—'}
           </p>
           <p className="text-xs sm:text-sm text-white/80 mt-2">
             {dashboardData.behavior_summary.needs_check_in 
@@ -420,12 +449,12 @@ export function ProgressDashboard() {
         <TabsContent value="behavioral" className="space-y-6">
           <Card className="p-4 sm:p-6 rounded-3xl">
             <h3 className="text-gray-800 mb-4 sm:mb-6 text-lg sm:text-xl">Behavioral Categories</h3>
-            {behaviorData.length > 0 ? (
+            {hasValidChartData(behaviorData) ? (
               <ResponsiveContainer width="100%" height={300} className="sm:h-[400px]">
                 <BarChart data={behaviorData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="category" fontSize={12} />
-                  <YAxis fontSize={12} />
+                  <YAxis domain={[0, 100]} fontSize={12} />
                   <Tooltip />
                   <Bar dataKey="score" fill="#A8E6CF" radius={[8, 8, 0, 0]} />
                 </BarChart>
@@ -443,11 +472,11 @@ export function ProgressDashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             <Card className="p-4 sm:p-6 rounded-3xl">
               <h3 className="text-gray-800 mb-4 sm:mb-6 text-lg sm:text-xl">Game Performance</h3>
-              {gameScoresData.length > 0 ? (
+              {hasValidChartData(gameScoresData) ? (
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={gameScoresData} layout="horizontal">
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis type="number" domain={[0, 100]} fontSize={12} />
+                    <XAxis type="number" domain={[0, 100]} allowDataOverflow fontSize={12} />
                     <YAxis dataKey="game" type="category" width={100} fontSize={10} />
                     <Tooltip />
                     <Bar dataKey="score" fill="#A8E6CF" radius={[0, 8, 8, 0]} />
@@ -462,12 +491,12 @@ export function ProgressDashboard() {
 
             <Card className="p-4 sm:p-6 rounded-3xl">
               <h3 className="text-gray-800 mb-4 sm:mb-6 text-lg sm:text-xl">Category Averages</h3>
-              {categoryAveragesData.length > 0 ? (
+              {hasValidChartData(categoryAveragesData) ? (
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={categoryAveragesData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="category" fontSize={12} />
-                    <YAxis fontSize={12} />
+                    <YAxis domain={[0, 100]} fontSize={12} />
                     <Tooltip />
                     <Bar dataKey="score" fill="#B3E5FC" radius={[8, 8, 0, 0]} />
                   </BarChart>
@@ -486,12 +515,12 @@ export function ProgressDashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             <Card className="p-4 sm:p-6 rounded-3xl">
               <h3 className="text-gray-800 mb-4 sm:mb-6 text-lg sm:text-xl">Current Traits Overview</h3>
-              {currentTraitsData.length > 0 ? (
+              {hasValidChartData(currentTraitsData) ? (
                 <ResponsiveContainer width="100%" height={300} className="sm:h-[400px]">
                   <RadarChart data={currentTraitsData}>
                     <PolarGrid stroke="#e0e0e0" />
                     <PolarAngleAxis dataKey="trait" fontSize={10} className="sm:text-xs" />
-                    <PolarRadiusAxis angle={90} domain={[0, 100]} fontSize={10} />
+                    <PolarRadiusAxis angle={90} domain={[0, 100]} tickCount={5} fontSize={10} />
                     <Radar name="Current Level" dataKey="value" stroke="#A8E6CF" fill="#A8E6CF" fillOpacity={0.6} />
                   </RadarChart>
                 </ResponsiveContainer>
@@ -522,9 +551,9 @@ export function ProgressDashboard() {
                           {new Date(activity.date).toLocaleDateString()}
                         </p>
                       </div>
-                      {activity.score && (
+                      {activity.score != null && Number.isFinite(activity.score) && (
                         <Badge className="bg-[#A8E6CF] text-[#2D5F3F]">
-                          {Math.round(activity.score)}%
+                          {safeRound(activity.score)}%
                         </Badge>
                       )}
                     </div>

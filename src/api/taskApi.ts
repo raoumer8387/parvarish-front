@@ -38,7 +38,9 @@ export const generateChildTasks = async (payload: TaskGenerationPayload) => {
 };
 
 export const getTasksForChild = async (childId: number, status: 'pending' | 'completed' | 'incomplete' = 'pending') => {
-  const response = await axiosInstance.get(`/api/v1/tasks/child/${childId}?status=${status}&limit=50`);
+  const response = await axiosInstance.get(`/api/v1/tasks/child/${childId}`, {
+    params: { task_status: status, limit: 50 },
+  });
   return response.data;
 };
 
@@ -53,7 +55,7 @@ export const getAllTasks = async (params?: AllTasksParams): Promise<TasksRespons
   }
   
   if (params?.status) {
-    queryParams.append('status', params.status);
+    queryParams.append('task_status', params.status);
   }
   
   const queryString = queryParams.toString();

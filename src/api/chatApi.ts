@@ -3,6 +3,43 @@ import { API_BASE_URL } from './config';
 
 const isDev = import.meta.env.DEV;
 
+/** RAG + LLM can be slow on first request (index load). */
+const CHAT_TIMEOUT_MS = 120_000;
+
+/** Turn axios/FastAPI errors into a readable chat message. */
+export function getChatErrorMessage(err: unknown): string {
+  const ax = err as {
+    message?: string;
+    code?: string;
+    response?: { status?: number; data?: { detail?: unknown } };
+  };
+
+  if (ax.message === 'Network Error' || ax.code === 'ERR_NETWORK') {
+    return 'Cannot reach the server. Ensure the backend is running on port 8000 and restart the Vite dev server.';
+  }
+
+  const detail = ax.response?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((d) => (typeof d === 'object' && d && 'msg' in d ? String((d as { msg?: string }).msg) : JSON.stringify(d)))
+      .filter(Boolean);
+    if (parts.length) return parts.join('; ');
+  }
+
+  const status = ax.response?.status;
+  if (status === 500) {
+    return 'Server error (500). Check the backend terminal — often missing or invalid GOOGLE_API_KEY / OPENROUTER_API_KEY in parvarish-be/.env';
+  }
+  if (status === 401) {
+    return 'Session expired. Please log in again.';
+  }
+
+  return ax.message || 'Unknown error';
+}
+
 export interface ChatRequest {
   message: string;
   child_id?: number | null;
@@ -21,10 +58,16 @@ export interface RecommendedVideo {
 
 export interface VoiceChatResponse extends ChatResponse {
   tags?: string[];
+  transcription?: string;
+  filename?: string;
 }
 
 export interface ChatWithAttachmentsResponse extends ChatResponse {
   attachment_names?: string[];
+}
+
+function chatUrl(path: string): string {
+  return `${API_BASE_URL}${path}`;
 }
 
 /** Images + PDF; max 5 files, 15 MB each (enforced by backend). */
@@ -45,92 +88,51 @@ export const sendChatWithAttachments = async (
     formData.append('child_id', String(childId));
   }
 
-  const token = localStorage.getItem('access_token');
-
   if (isDev) {
     console.log('[Chat API] Sending message with attachments', {
-      endpoint: `${API_BASE_URL}/api/v1/chat/with-attachments`,
+      endpoint: chatUrl('/api/v1/chat/with-attachments'),
       fileCount: files.length,
       childId: childId || null,
       hasMessage: !!trimmed,
-      hasAuthToken: !!token,
     });
   }
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/chat/with-attachments`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    body: formData,
-  });
-
-  if (!res.ok) {
-    let errorText = '';
-    try {
-      const err = await res.json();
-      if (typeof err.detail === 'string') {
-        errorText = err.detail;
-      } else if (Array.isArray(err.detail)) {
-        errorText = err.detail
-          .map((d: { msg?: string }) => d?.msg || JSON.stringify(d))
-          .join('; ');
-      } else if (err.detail != null) {
-        errorText = JSON.stringify(err.detail);
-      }
-    } catch {
-      errorText = await res.text();
+  const { data } = await axiosInstance.post<ChatWithAttachmentsResponse>(
+    '/api/v1/chat/with-attachments',
+    formData,
+    {
+      timeout: CHAT_TIMEOUT_MS,
+      headers: { 'Content-Type': 'multipart/form-data' },
     }
-    if (isDev) {
-      console.error('[Chat API] With-attachments request failed', {
-        status: res.status,
-        statusText: res.statusText,
-        responseText: errorText,
-      });
-    }
-    throw new Error(errorText || `Chat with attachments failed (${res.status})`);
-  }
-
-  const data = (await res.json()) as ChatWithAttachmentsResponse;
-
-  if (isDev) {
-    console.log('[Chat API] With-attachments response received', {
-      hasResponseText: !!data?.response,
-      userId: data?.user_id,
-      attachmentNames: data?.attachment_names,
-    });
-  }
+  );
 
   return data;
 };
 
-// Send chat message with optional child context
 export const sendChatMessage = async (
   message: string,
   childId?: number | null
 ): Promise<ChatResponse> => {
   if (isDev) {
     console.log('[Chat API] Sending text message', {
-      endpoint: '/api/v1/chat',
+      endpoint: chatUrl('/api/v1/chat'),
       childId: childId || null,
       messageLength: message.length,
     });
   }
 
-  const { data } = await axiosInstance.post<ChatResponse>('/api/v1/chat', {
-    message,
-    child_id: childId || null,
-  });
-
-  if (isDev) {
-    console.log('[Chat API] Text message response received', {
-      hasResponseText: !!data?.response,
-      userId: data?.user_id,
-    });
-  }
+  const { data } = await axiosInstance.post<ChatResponse>(
+    '/api/v1/chat',
+    {
+      message,
+      child_id: childId ?? null,
+    },
+    { timeout: CHAT_TIMEOUT_MS }
+  );
 
   return data;
 };
 
-// Send recorded voice message as FormData with optional child context
 export const sendVoiceMessage = async (
   audioBlob: Blob,
   childId?: number | null
@@ -142,50 +144,27 @@ export const sendVoiceMessage = async (
     formData.append('child_id', String(childId));
   }
 
-  const token = localStorage.getItem('access_token');
-
   if (isDev) {
     console.log('[Chat API] Sending voice message', {
-      endpoint: `${API_BASE_URL}/api/v1/chat/voice`,
+      endpoint: chatUrl('/api/v1/chat/voice'),
       childId: childId || null,
       mimeType: audioBlob.type,
       sizeBytes: audioBlob.size,
-      hasAuthToken: !!token,
     });
   }
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/chat/voice`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    body: formData,
-  });
-
-  if (!res.ok) {
-    const errorText = await res.text();
-    if (isDev) {
-      console.error('[Chat API] Voice message request failed', {
-        status: res.status,
-        statusText: res.statusText,
-        responseText: errorText,
-      });
+  const { data } = await axiosInstance.post<VoiceChatResponse>(
+    '/api/v1/chat/voice',
+    formData,
+    {
+      timeout: CHAT_TIMEOUT_MS,
+      headers: { 'Content-Type': 'multipart/form-data' },
     }
-    throw new Error(errorText || 'Voice chat request failed');
-  }
-
-  const data = (await res.json()) as VoiceChatResponse;
-
-  if (isDev) {
-    console.log('[Chat API] Voice message response received', {
-      hasResponseText: !!data?.response,
-      userId: data?.user_id,
-      tagsCount: data?.tags?.length || 0,
-    });
-  }
+  );
 
   return data;
 };
 
-// New interfaces for chat history
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -197,32 +176,26 @@ export interface ChatHistoryResponse {
   messages: ChatMessage[];
 }
 
-// Get chat history, with optional filtering by child
 export const getChatHistory = async (
   childId?: number | null,
   limit: number = 100
 ): Promise<ChatHistoryResponse> => {
-  const params: any = { limit };
+  const params: Record<string, string | number> = { limit };
   if (childId) {
     params.child_id = childId;
   }
 
   if (isDev) {
     console.log('[Chat API] Fetching chat history', {
-      endpoint: '/api/v1/chat/history',
+      endpoint: chatUrl('/api/v1/chat/history'),
       params,
     });
   }
 
   const { data } = await axiosInstance.get<ChatHistoryResponse>('/api/v1/chat/history', {
     params,
+    timeout: 30_000,
   });
-
-  if (isDev) {
-    console.log('[Chat API] Chat history response received', {
-      messagesCount: data?.messages?.length || 0,
-    });
-  }
 
   return data;
 };

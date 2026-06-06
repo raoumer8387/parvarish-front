@@ -1,218 +1,249 @@
 import { Card } from './ui/card';
-import { Progress } from './ui/progress';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Heart, Clock, Star, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { CheckCircle, Loader2, RefreshCw, AlertTriangle, Users, Activity } from 'lucide-react';
+import { useState, useEffect, useCallback, type CSSProperties } from 'react';
 import { BehaviorTrackingPopup } from './BehaviorTrackingPopup';
 import * as behaviorApi from '../api/behaviorApi';
+import * as childProgressApi from '../api/childProgressApi';
 import TaskList from './TaskList';
 import { LackingAnalysisSection } from './LackingAnalysisSection';
 import { GuidanceModal } from './GuidanceModal';
 import { TaskGenerationPanel } from './TaskGenerationPanel';
-import { fetchLackingAnalysis, LackingArea } from '../api/lackingApi';
+import { LackingArea } from '../api/lackingApi';
+import { ScoreRing, DowngradeChips } from './UnifiedBehaviorScore';
+import { DashboardOverviewTab, DashboardActivityTab } from './UnifiedDashboardSection';
+import { useParentNotificationSocket } from '../hooks/useParentNotificationSocket';
+import { getAccessToken } from '../api/auth';
 
-interface ChildWithStats extends behaviorApi.ChildInfo {
-  behaviorLevel?: number;
-  islamicKnowledge?: number;
-  categories?: Record<string, number>;
-  loading?: boolean;
+interface ChildCardView extends childProgressApi.ChildOverview {
   needsCheckIn?: boolean;
 }
 
-const quotes = [
-  "The best gift a parent can give their child is good character.",
-  "Children are like wet cement; whatever falls on them makes an impression.",
-  "Your children are not your children, they are the sons and daughters of Life's longing for itself.",
-];
+function parseDashboardUpdate(
+  payload: unknown
+): { childId: number; unified: childProgressApi.UnifiedBehaviorAnalysis } | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const p = payload as childProgressApi.DashboardUpdatePayload & { data?: Record<string, unknown> };
+  const data = p.data;
+  if (!data || typeof data !== 'object') return null;
+
+  const childId = typeof data.child_id === 'number' ? data.child_id : null;
+  const unified = data.unified_analysis as childProgressApi.UnifiedBehaviorAnalysis | undefined;
+  if (childId == null || !unified || typeof unified.overall_score !== 'number') return null;
+
+  const msgType = (p as { type?: string }).type;
+  if (msgType && msgType !== 'dashboard_update') return null;
+
+  return { childId, unified };
+}
+
+function skillAreasToLackingAreas(
+  areas: childProgressApi.SkillAreaItem[]
+): LackingArea[] {
+  return areas.map((a) => ({
+    area: a.area,
+    label: a.label,
+    score: a.score,
+    priority: a.priority === 'high' ? 'high' : 'medium',
+    game_type: a.game_type || '',
+  }));
+}
+
+function getChildStatus(child: ChildCardView) {
+  if (child.needsCheckIn) return { label: 'Check-in due', className: 'bg-orange-100 text-orange-700' };
+  if (child.needs_attention) return { label: 'Needs attention', className: 'bg-red-100 text-red-700' };
+  return { label: 'On track', className: 'bg-green-100 text-green-700' };
+}
 
 export function ParentDashboard() {
-  const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
-  const [children, setChildren] = useState<ChildWithStats[]>([]);
-  const [loadingChildren, setLoadingChildren] = useState(true);
+  const [overview, setOverview] = useState<childProgressApi.AllChildrenOverview | null>(null);
+  const [childCards, setChildCards] = useState<ChildCardView[]>([]);
+  const [childDashboard, setChildDashboard] = useState<childProgressApi.ChildProgressDashboard | null>(null);
+
+  const [loadingOverview, setLoadingOverview] = useState(true);
+  const [loadingDashboard, setLoadingDashboard] = useState(false);
+  const [periodDays, setPeriodDays] = useState(30);
+
   const [showBehaviorPopup, setShowBehaviorPopup] = useState(false);
   const [selectedChildForCheckIn, setSelectedChildForCheckIn] = useState<number | null>(null);
   const [parentId, setParentId] = useState<number | null>(null);
-  const [selectedChildForTasks, setSelectedChildForTasks] = useState<number | null>(null);
-  
-  // Lacking analysis state
-  const [lackingData, setLackingData] = useState<{
-    child_name: string;
-    total_games_played: number;
-    lacking_areas: LackingArea[];
-    requires_attention: boolean;
-  } | null>(null);
-  const [loadingLacking, setLoadingLacking] = useState(false);
+  const [selectedChildId, setSelectedChildId] = useState<number | null>(null);
+
   const [selectedLacking, setSelectedLacking] = useState<LackingArea | null>(null);
   const [showGuidanceModal, setShowGuidanceModal] = useState(false);
   const [showTaskPanel, setShowTaskPanel] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
 
-  // Fetch children list, their stats, and check-in status
-  useEffect(() => {
-    const fetchChildrenAndStats = async () => {
-      setLoadingChildren(true);
-      try {
-        // Get list of children
-        const childrenList = await behaviorApi.getParentChildren();
-        const childrenArray = Array.isArray(childrenList) ? childrenList : (childrenList as any)?.children || [];
-        
-        if (childrenArray.length > 0) {
-            setSelectedChildForTasks(childrenArray[0].id);
-        }
+  const loadOverview = useCallback(async (days: number) => {
+    setLoadingOverview(true);
+    try {
+      const [overviewData, checkInStatus] = await Promise.all([
+        childProgressApi.getAllChildrenOverview(days),
+        behaviorApi.getCheckInStatus().catch(() => ({ children: [] as { child_id: number; needs_check_in: boolean }[] })),
+      ]);
 
-        // Get check-in status for all children
-        let checkInStatusMap = new Map<number, boolean>();
-        try {
-          const checkInStatus = await behaviorApi.getCheckInStatus();
-          checkInStatus.children.forEach(child => {
-            checkInStatusMap.set(child.child_id, child.needs_check_in);
-          });
-        } catch (err) {
-          console.error('Failed to load check-in status:', err);
-        }
-        
-        // Fetch stats for each child
-        const childrenWithStats = await Promise.all(
-          childrenArray.map(async (child: behaviorApi.ChildInfo) => {
-            try {
-              const stats = await behaviorApi.getChildStats(child.id);
-              return {
-                ...child,
-                behaviorLevel: stats.behavior_level || 0,
-                islamicKnowledge: stats.islamic_knowledge || 0,
-                categories: stats.categories || {},
-                needsCheckIn: checkInStatusMap.get(child.id) || false,
-              };
-            } catch (err) {
-              console.error(`Failed to load stats for child ${child.id}:`, err);
-              // Return child with default stats on error
-              return {
-                ...child,
-                behaviorLevel: 0,
-                islamicKnowledge: 0,
-                categories: {},
-                needsCheckIn: checkInStatusMap.get(child.id) || false,
-              };
-            }
-          })
-        );
-        
-        setChildren(childrenWithStats);
-      } catch (err) {
-        console.error('Failed to load children:', err);
-        setChildren([]);
-      } finally {
-        setLoadingChildren(false);
-      }
-    };
+      const checkInMap = new Map(
+        checkInStatus.children.map((c) => [c.child_id, c.needs_check_in])
+      );
 
-    fetchChildrenAndStats();
+      setOverview(overviewData);
+      const cards: ChildCardView[] = (overviewData.children ?? []).map((child) => ({
+        ...child,
+        overall_behavior_score: child.overall_behavior_score ?? 0,
+        unified_scores: child.unified_scores ?? {},
+        downgraded_categories: child.downgraded_categories ?? [],
+        engagement_score: child.engagement_score ?? 0,
+        needs_attention: child.needs_attention ?? false,
+        recent_activities: child.recent_activities ?? {
+          behavior_responses: 0,
+          games_played: 0,
+          tasks_assigned: 0,
+          tasks_completed: 0,
+        },
+        needsCheckIn: checkInMap.get(child.id) ?? false,
+      }));
+      setChildCards(cards);
 
-    // Get parent ID from user info
-    const userInfo = localStorage.getItem('user_info');
-    if (userInfo) {
-      try {
-        setParentId(1); // TODO: Get actual parent_id from userInfo
-      } catch (err) {
-        console.error('Failed to parse user info', err);
-      }
-    }
-
-    // Check if behavior popup should be shown
-    if (behaviorApi.shouldShowBehaviorPopup() || behaviorApi.shouldShowReminder()) {
-      setShowBehaviorPopup(true);
+      setSelectedChildId((prev) => {
+        if (prev && cards.some((c) => c.id === prev)) return prev;
+        return cards[0]?.id ?? null;
+      });
+    } catch (err) {
+      console.error('Failed to load overview:', err);
+      setOverview(null);
+      setChildCards([]);
+    } finally {
+      setLoadingOverview(false);
     }
   }, []);
 
-  const handleOpenBehaviorCheckIn = (childId?: number) => {
-    if (childId) {
-      setSelectedChildForCheckIn(childId);
+  const loadChildDashboard = useCallback(async (childId: number, days: number) => {
+    setLoadingDashboard(true);
+    try {
+      const data = await childProgressApi.getChildProgressDashboard(childId, days);
+      setChildDashboard(data);
+    } catch (err) {
+      console.error('Failed to load child dashboard:', err);
+      setChildDashboard(null);
+    } finally {
+      setLoadingDashboard(false);
     }
+  }, []);
+
+  const applyUnifiedPatch = useCallback(
+    (childId: number, unified: childProgressApi.UnifiedBehaviorAnalysis) => {
+      setChildCards((prev) =>
+        prev.map((c) =>
+          c.id === childId
+            ? {
+                ...c,
+                overall_behavior_score: unified.overall_score ?? 0,
+                unified_scores: unified.unified_scores ?? {},
+                downgraded_categories: unified.downgraded_categories ?? [],
+                needs_attention:
+                  c.needsCheckIn ||
+                  unified.downgraded_categories.length > 0 ||
+                  unified.skill_areas?.requires_attention === true,
+              }
+            : c
+        )
+      );
+
+      setChildDashboard((prev) => {
+        if (!prev || prev.child_info.id !== childId) return prev;
+        return { ...prev, unified_analysis: unified };
+      });
+    },
+    []
+  );
+
+  const refreshUnifiedLight = useCallback(
+    async (childId: number) => {
+      try {
+        const unified = await childProgressApi.getChildUnifiedAnalysis(childId, periodDays);
+        applyUnifiedPatch(childId, unified);
+      } catch (err) {
+        console.error('Failed to refresh unified analysis:', err);
+      }
+    },
+    [applyUnifiedPatch, periodDays]
+  );
+
+  const handleRealtimeMessage = useCallback(
+    (payload: unknown) => {
+      const update = parseDashboardUpdate(payload);
+      if (update) {
+        applyUnifiedPatch(update.childId, update.unified);
+        if (selectedChildId === update.childId) {
+          void loadChildDashboard(update.childId, periodDays);
+        }
+        return;
+      }
+
+      const wrapped = payload as { type?: string; data?: unknown };
+      if (wrapped?.type === 'dashboard_update' && wrapped.data) {
+        const inner = parseDashboardUpdate({ type: 'dashboard_update', data: wrapped.data as Record<string, unknown> });
+        if (inner) {
+          applyUnifiedPatch(inner.childId, inner.unified);
+          if (selectedChildId === inner.childId) {
+            void refreshUnifiedLight(inner.childId);
+          }
+        }
+      }
+    },
+    [applyUnifiedPatch, selectedChildId, loadChildDashboard, refreshUnifiedLight, periodDays]
+  );
+
+  useParentNotificationSocket({
+    token: getAccessToken(),
+    enabled: true,
+    onMessage: handleRealtimeMessage,
+  });
+
+  useEffect(() => {
+    void loadOverview(periodDays);
+
+    const userInfo = localStorage.getItem('user_info');
+    if (userInfo) {
+      try {
+        const parsed = JSON.parse(userInfo);
+        setParentId(parsed.parent_id ?? parsed.id ?? 1);
+      } catch {
+        setParentId(1);
+      }
+    }
+
+    if (behaviorApi.shouldShowBehaviorPopup() || behaviorApi.shouldShowReminder()) {
+      setShowBehaviorPopup(true);
+    }
+  }, [loadOverview, periodDays]);
+
+  useEffect(() => {
+    if (selectedChildId) {
+      void loadChildDashboard(selectedChildId, periodDays);
+    } else {
+      setChildDashboard(null);
+    }
+  }, [selectedChildId, periodDays, loadChildDashboard]);
+
+  const handleOpenBehaviorCheckIn = (childId?: number) => {
+    if (childId) setSelectedChildForCheckIn(childId);
     setShowBehaviorPopup(true);
   };
 
   const handleCloseBehaviorPopup = () => {
     setShowBehaviorPopup(false);
     setSelectedChildForCheckIn(null);
-    // Refresh check-in status after closing popup
-    refreshCheckInStatus();
+    void loadOverview(periodDays);
+    if (selectedChildId) void loadChildDashboard(selectedChildId, periodDays);
   };
 
-  const refreshCheckInStatus = async () => {
-    try {
-      const checkInStatus = await behaviorApi.getCheckInStatus();
-      setChildren(prevChildren => 
-        prevChildren.map(child => {
-          const status = checkInStatus.children.find(c => c.child_id === child.id);
-          return {
-            ...child,
-            needsCheckIn: status?.needs_check_in || false,
-          };
-        })
-      );
-    } catch (err) {
-      console.error('Failed to refresh check-in status:', err);
-    }
-  };
-
-  // Fetch lacking analysis for selected child
-  useEffect(() => {
-    if (selectedChildForTasks) {
-      fetchLackingData(selectedChildForTasks);
-    }
-  }, [selectedChildForTasks]);
-
-  const fetchLackingData = async (childId: number) => {
-    setLoadingLacking(true);
-    try {
-      // Add timestamp to bypass any caching
-      const timestamp = new Date().getTime();
-      const data = await fetchLackingAnalysis(childId, 7); // Last 7 days
-      console.log('Lacking Analysis Data Received:', {
-        timestamp,
-        childId,
-        child_name: data.child_name,
-        total_games: data.total_games_played,
-        lacking_areas_count: data.lacking_areas.length,
-        lacking_areas: data.lacking_areas,
-        requires_attention: data.requires_attention
-      });
-      setLackingData(data);
-    } catch (err) {
-      console.error('Failed to load lacking analysis:', err);
-      setLackingData(null);
-    } finally {
-      setLoadingLacking(false);
-    }
-  };
-
-  const handleRefreshData = async () => {
-    if (!selectedChildForTasks) return;
-    
-    console.log('Refreshing data for child:', selectedChildForTasks);
-    
-    // Refresh lacking analysis
-    await fetchLackingData(selectedChildForTasks);
-    
-    // Refresh child stats
-    try {
-      const stats = await behaviorApi.getChildStats(selectedChildForTasks);
-      console.log('Child stats refreshed:', stats);
-      setChildren(prevChildren => 
-        prevChildren.map(child => 
-          child.id === selectedChildForTasks
-            ? {
-                ...child,
-                behaviorLevel: stats.behavior_level || 0,
-                islamicKnowledge: stats.islamic_knowledge || 0,
-                categories: stats.categories || {},
-              }
-            : child
-        )
-      );
-    } catch (err) {
-      console.error('Failed to refresh child stats:', err);
-    }
+  const handleRefreshAll = async () => {
+    await loadOverview(periodDays);
+    if (selectedChildId) await loadChildDashboard(selectedChildId, periodDays);
   };
 
   const handleGetGuidance = (area: LackingArea) => {
@@ -225,14 +256,38 @@ export function ParentDashboard() {
     setShowTaskPanel(true);
   };
 
-  const handleChildSelectionChange = (childId: number) => {
-    setSelectedChildForTasks(childId);
-  };
+  const selectedChild = childCards.find((c) => c.id === selectedChildId);
+  const selectedChildName =
+    selectedChild?.name || childDashboard?.child_info.name || '';
 
+  const lackingAreas = childDashboard?.unified_analysis
+    ? skillAreasToLackingAreas(childDashboard.unified_analysis.skill_areas?.lacking_areas ?? [])
+    : [];
+
+  const ua = childDashboard?.unified_analysis ?? null;
+  const weakestCategory = ua?.weakest_category ?? null;
+  const weakestScore = weakestCategory ? ua?.unified_scores?.[weakestCategory] ?? null : null;
+  const formatCat = (c: string) => c.replace(/_/g, ' ');
+
+  const totalGamesPlayed = childDashboard?.games_summary.total_sessions ?? 0;
+  const checkInsDue = childCards.filter((c) => c.needsCheckIn).length;
+
+  const tabStyle = (active: boolean): CSSProperties =>
+    active
+      ? { backgroundColor: '#2D5F3F', color: '#FFFFFF', boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }
+      : { backgroundColor: 'transparent', color: '#6B7280' };
+
+  const attentionReasons: string[] = [];
+  if (selectedChild?.needsCheckIn) attentionReasons.push('Daily check-in is due');
+  if (selectedChild && selectedChild.downgraded_categories.length > 0)
+    attentionReasons.push(`Declined: ${selectedChild.downgraded_categories.map(formatCat).join(', ')}`);
+  if (weakestCategory && weakestScore != null && weakestScore < 60)
+    attentionReasons.push(`Lowest area: ${formatCat(weakestCategory)} (${Math.round(weakestScore)}%)`);
+  const showAttention = (selectedChild?.needs_attention ?? false) || attentionReasons.length > 0;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-[#FFF8E1] to-white pt-20 lg:pt-8">
-      {/* Behavior Tracking Popup */}
+    <div className="p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-[#FFF8E1] to-white pt-20 lg:pt-8 min-h-screen">
+      <div className="max-w-5xl mx-auto">
       {showBehaviorPopup && parentId && (
         <BehaviorTrackingPopup
           parentId={parentId}
@@ -241,13 +296,12 @@ export function ParentDashboard() {
         />
       )}
 
-      {/* Guidance Modal */}
-      {selectedLacking && selectedChildForTasks && (
+      {selectedLacking && selectedChildId && (
         <GuidanceModal
           isOpen={showGuidanceModal}
           onClose={() => setShowGuidanceModal(false)}
-          childId={selectedChildForTasks}
-          childName={lackingData?.child_name || ''}
+          childId={selectedChildId}
+          childName={selectedChildName}
           lackingArea={selectedLacking.area}
           lackingLabel={selectedLacking.label}
           score={selectedLacking.score}
@@ -255,215 +309,249 @@ export function ParentDashboard() {
         />
       )}
 
-      {/* Task Generation Panel */}
-      {selectedLacking && selectedChildForTasks && (
+      {selectedLacking && selectedChildId && (
         <TaskGenerationPanel
           isOpen={showTaskPanel}
           onClose={() => setShowTaskPanel(false)}
-          childId={selectedChildForTasks}
-          childName={lackingData?.child_name || ''}
+          childId={selectedChildId}
+          childName={selectedChildName}
           lackingArea={selectedLacking.area}
           lackingLabel={selectedLacking.label}
         />
       )}
 
-      {/* Welcome Header */}
-      <div className="mb-6 lg:mb-8">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-          <h1 className="text-[#2D5F3F] text-2xl sm:text-3xl lg:text-4xl">Welcome, Parent</h1>
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-[#2D5F3F] text-2xl sm:text-3xl font-semibold">Your Family</h1>
+          <p className="text-sm text-gray-600 mt-1">
+            A clear view of each child&apos;s behavior, games, and tasks
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={periodDays.toString()} onValueChange={(v: string) => setPeriodDays(parseInt(v))}>
+            <SelectTrigger className="w-28 rounded-xl bg-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Last 7 days</SelectItem>
+              <SelectItem value="30">Last 30 days</SelectItem>
+              <SelectItem value="90">Last 90 days</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            onClick={() => void handleRefreshAll()}
+            className="rounded-xl"
+            disabled={loadingOverview || loadingDashboard}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loadingOverview ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
           <Button
             onClick={() => handleOpenBehaviorCheckIn()}
             className="bg-gradient-to-r from-[#A8E6CF] to-[#8BD4AE] hover:from-[#8BD4AE] hover:to-[#A8E6CF] text-[#2D5F3F] rounded-xl font-medium relative"
           >
             <CheckCircle className="h-4 w-4 mr-2" />
             Daily Check-in
-            {children.filter(c => c.needsCheckIn).length > 0 && (
-              <span className="absolute -top-2 -right-2 bg-orange-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                {children.filter(c => c.needsCheckIn).length}
+            {checkInsDue > 0 && (
+              <span className="absolute top-0 right-0 bg-orange-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                {checkInsDue}
               </span>
             )}
           </Button>
         </div>
-        <div className="flex items-start gap-2 bg-white/60 p-3 sm:p-4 rounded-2xl border-l-4 border-[#A8E6CF]">
-          <span className="text-xl sm:text-2xl">💡</span>
-          <p className="text-sm sm:text-base text-gray-700 italic">"{randomQuote}"</p>
-        </div>
       </div>
 
-      {/* Children Profiles */}
-      <h2 className="text-[#2D5F3F] mb-4 text-xl sm:text-2xl">Your Children</h2>
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6 mb-6 lg:mb-8">
-        {loadingChildren ? (
-          <div className="col-span-full flex items-center justify-center py-12">
-            <div className="flex flex-col items-center gap-3">
-              <Loader2 className="h-8 w-8 animate-spin text-[#A8E6CF]" />
-              <p className="text-gray-600">Loading children...</p>
-            </div>
+      {/* Family summary strip */}
+      {overview?.summary && (
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          <Card className="p-4 rounded-2xl bg-green-50 border-0">
+            <p className="text-xs text-gray-600">Activities ({overview.summary.period_days}d)</p>
+            <p className="text-2xl font-semibold text-[#2D5F3F]">{overview.summary.total_activities}</p>
+          </Card>
+          <Card className="p-4 rounded-2xl bg-blue-50 border-0">
+            <p className="text-xs text-gray-600">Avg engagement</p>
+            <p className="text-2xl font-semibold text-[#1E4F6F]">{Math.round(overview.summary.overall_engagement)}%</p>
+          </Card>
+          <Card className="p-4 rounded-2xl bg-orange-50 border-0">
+            <p className="text-xs text-gray-600">Need attention</p>
+            <p className="text-2xl font-semibold text-orange-700">{overview.summary.children_needing_attention}</p>
+          </Card>
+        </div>
+      )}
+
+      {/* Child selector */}
+      {loadingOverview ? (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-[#A8E6CF]" />
+        </div>
+      ) : childCards.length === 0 ? (
+        <Card className="p-10 rounded-2xl text-center text-gray-600">
+          <Users className="h-10 w-10 mx-auto mb-3 text-gray-400" />
+          <p>No children found. Add children in Settings to get started.</p>
+        </Card>
+      ) : (
+        <>
+          <p className="text-sm font-medium text-gray-700 mb-2">Select a child</p>
+          <div className="flex flex-wrap gap-3 mb-6">
+            {childCards.map((child) => {
+              const status = getChildStatus(child);
+              const isSelected = selectedChildId === child.id;
+              return (
+                <button
+                  key={child.id}
+                  onClick={() => setSelectedChildId(child.id)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition-all text-left shadow-md ${
+                    isSelected
+                      ? 'border-[#A8E6CF] bg-white'
+                      : 'border-transparent bg-white'
+                  }`}
+                >
+                  <div className="text-center w-10">
+                    <p className="text-lg font-semibold text-[#2D5F3F]">{Math.round(child.overall_behavior_score)}</p>
+                    <p className="text-xs text-gray-500">score</p>
+                  </div>
+                  <div className="border-l pl-2">
+                    <p className="font-medium text-[#2D5F3F]">{child.name}</p>
+                    <p className="text-xs text-gray-500">{child.age ? `${child.age} yrs` : 'Age N/A'}</p>
+                  </div>
+                  <Badge className={`text-xs ${status.className}`}>{status.label}</Badge>
+                </button>
+              );
+            })}
           </div>
-        ) : children.length === 0 ? (
-          <div className="col-span-full text-center py-12">
-            <p className="text-gray-600">No children found. Please add children to your profile.</p>
-          </div>
-        ) : (
-          children.map((child) => (
-            <Card 
-                key={child.id} 
-                className={`relative p-6 hover:shadow-xl transition-shadow rounded-3xl border-2 ${selectedChildForTasks === child.id ? 'border-[#A8E6CF]' : 'border-transparent'}`}
-                onClick={() => setSelectedChildForTasks(child.id)}
-            >
-              {/* Check-in Status Badge */}
-              {child.needsCheckIn ? (
-                <div className="absolute top-4 right-4 flex items-center gap-2 bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-medium">
-                  ⏰ Check-in Due
-                </div>
-              ) : (
-                <div className="absolute top-4 right-4 flex items-center gap-2 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-medium">
-                  ✓ Checked in
-                </div>
-              )}
-              
-              <div className="flex items-center gap-4 mb-6 mt-6">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#A8E6CF] to-[#B3E5FC] flex items-center justify-center text-3xl">
-                  {/* Default avatar - could be customized per child */}
-                  👧
-                </div>
-                <div>
-                  <h3 className="text-[#2D5F3F]">{child.name}</h3>
-                  <p className="text-gray-600">{child.age || 'N/A'} years old</p>
-                </div>
-              </div>
 
-              {/* Check-in Action Button */}
-              {child.needsCheckIn && (
-                <div className="mb-4">
-                  <Button 
-                    onClick={() => handleOpenBehaviorCheckIn(child.id)}
-                    className="!bg-gradient-to-r !from-orange-400 !to-orange-500 !text-white hover:!from-orange-500 hover:!to-orange-600 rounded-xl font-semibold transition-colors hover:shadow-md !shadow-sm"
-                    size="sm"
-                  >
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Complete Daily Check-in
-                  </Button>
-                </div>
-              )}
-
-              {/* Summary Stats */}
-              <div className="space-y-4 mb-6">
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-sm text-gray-700">Behavior Level</span>
-                    <Badge className="bg-[#A8E6CF] text-[#2D5F3F] hover:bg-[#A8E6CF]">
-                      {child.behaviorLevel || 0}%
-                    </Badge>
-                  </div>
-                  <Progress value={child.behaviorLevel || 0} className="h-2" />
-                </div>
-
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-sm text-gray-700">Islamic Knowledge</span>
-                    <Badge className="bg-[#B3E5FC] text-[#1E4F6F] hover:bg-[#B3E5FC]">
-                      {child.islamicKnowledge || 0}%
-                    </Badge>
-                  </div>
-                  <Progress value={child.islamicKnowledge || 0} className="h-2" />
-                </div>
-
-                <div className="flex items-center justify-between pt-2">
-                  <span className="text-sm text-gray-700">Games Played</span>
-                  <div className="flex items-center gap-1">
-                    <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                    <span>--</span>
+          {selectedChildId && selectedChild && (
+            <>
+              {/* Child snapshot */}
+              <Card className="p-5 sm:p-6 rounded-2xl mb-6 border-[#A8E6CF]/30">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+                  <ScoreRing score={selectedChild.overall_behavior_score} size={96} label="Overall" />
+                  <div className="flex-1 min-w-0">
+                    <h2 className="text-xl font-semibold text-[#2D5F3F]">{selectedChildName}</h2>
+                    <p className="text-sm text-gray-600 mb-3">
+                      {childDashboard?.child_info.school || '—'}
+                      {childDashboard?.child_info.class_name ? ` · ${childDashboard.child_info.class_name}` : ''}
+                    </p>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      <Badge variant="secondary">Engagement {Math.round(selectedChild.engagement_score)}%</Badge>
+                      <Badge variant="secondary">
+                        {selectedChild.recent_activities.games_played} games
+                      </Badge>
+                      <Badge variant="secondary">
+                        {selectedChild.recent_activities.tasks_completed} tasks done
+                      </Badge>
+                    </div>
+                    <DowngradeChips categories={selectedChild.downgraded_categories} />
                   </div>
                 </div>
-              </div>
 
-              {/* Categories from stats */}
-              {child.categories && Object.keys(child.categories).length > 0 && (
-                <div className="grid grid-cols-2 gap-3">
-                  {Object.entries(child.categories).map(([category, percentage]) => (
-                    <div key={category} className="flex items-center gap-2 bg-blue-50 p-2 rounded-lg">
+              </Card>
+
+              {/* Attention / focus-area guidance */}
+              {showAttention && (
+                <Card className="p-4 sm:p-5 rounded-2xl mb-6 bg-orange-50 border-0">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="flex items-start gap-3 flex-1">
+                      <AlertTriangle className="h-5 w-5 shrink-0 text-orange-600" />
                       <div>
-                        <p className="text-xs text-gray-600 capitalize">{category}</p>
-                        <p className="text-sm text-gray-800">{percentage || 0}%</p>
+                        <p className="font-medium text-orange-800">
+                          {selectedChildName} needs your attention
+                        </p>
+                        {attentionReasons.length > 0 ? (
+                          <ul className="mt-1 space-y-0.5">
+                            {attentionReasons.map((r, i) => (
+                              <li key={i} className="text-sm text-gray-700">• {r}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-sm text-gray-700">
+                            Review the Skills tab to see where to help.
+                          </p>
+                        )}
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Placeholder traits when no categories */}
-              {(!child.categories || Object.keys(child.categories).length === 0) && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex items-center gap-2 bg-gray-100 p-2 rounded-lg">
-                    <Heart className="h-4 w-4 text-gray-400" />
-                    <div>
-                      <p className="text-xs text-gray-600">No data</p>
-                      <p className="text-sm text-gray-800">--</p>
+                    <div className="flex gap-2 shrink-0">
+                      {selectedChild.needsCheckIn && (
+                        <Button
+                          onClick={() => handleOpenBehaviorCheckIn(selectedChild.id)}
+                          className="bg-orange-500 text-white rounded-xl"
+                          size="sm"
+                        >
+                          Check-in
+                        </Button>
+                      )}
+                      <Button
+                        onClick={() => setActiveTab('skills')}
+                        variant="outline"
+                        className="rounded-xl bg-white"
+                        size="sm"
+                      >
+                        View guidance
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 bg-gray-100 p-2 rounded-lg">
-                    <Clock className="h-4 w-4 text-gray-400" />
-                    <div>
-                      <p className="text-xs text-gray-600">No data</p>
-                      <p className="text-sm text-gray-800">--</p>
-                    </div>
-                  </div>
-                </div>
+                </Card>
               )}
-            </Card>
-          ))
-        )}
-      </div>
 
-      {/* Lacking Analysis Section */}
-      {selectedChildForTasks && lackingData && (
-        <div className="mb-8">
-          {loadingLacking ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="flex flex-col items-center gap-3">
-                <Loader2 className="h-8 w-8 animate-spin text-[#A8E6CF]" />
-                <p className="text-gray-600">Loading capability analysis...</p>
-              </div>
-            </div>
-          ) : (
-            <LackingAnalysisSection
-              childId={selectedChildForTasks}
-              childName={lackingData.child_name}
-              lackingAreas={lackingData.lacking_areas}
-              totalGamesPlayed={lackingData.total_games_played}
-              onGetGuidance={handleGetGuidance}
-              children={children.map(c => ({ id: c.id, name: c.name }))}
-              onChildChange={handleChildSelectionChange}
-            />
+              {/* Tabbed detail — maps to /child-progress/{id}/dashboard sections */}
+              {loadingDashboard ? (
+                <div className="flex items-center justify-center py-16">
+                  <Loader2 className="h-8 w-8 animate-spin text-[#A8E6CF]" />
+                </div>
+              ) : childDashboard ? (
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-5">
+                  <TabsList className="bg-gray-100 rounded-xl p-1 w-full grid grid-cols-4 gap-1">
+                    <TabsTrigger value="overview" style={tabStyle(activeTab === 'overview')} className="rounded-lg text-xs sm:text-sm font-medium">
+                      Overview
+                    </TabsTrigger>
+                    <TabsTrigger value="skills" style={tabStyle(activeTab === 'skills')} className="rounded-lg text-xs sm:text-sm font-medium">
+                      Skills
+                    </TabsTrigger>
+                    <TabsTrigger value="tasks" style={tabStyle(activeTab === 'tasks')} className="rounded-lg text-xs sm:text-sm font-medium">
+                      Tasks
+                    </TabsTrigger>
+                    <TabsTrigger value="activity" style={tabStyle(activeTab === 'activity')} className="rounded-lg text-xs sm:text-sm font-medium">
+                      Activity
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="overview">
+                    <DashboardOverviewTab dashboard={childDashboard} />
+                  </TabsContent>
+
+                  <TabsContent value="skills">
+                    <LackingAnalysisSection
+                      childId={selectedChildId}
+                      childName={selectedChildName}
+                      lackingAreas={lackingAreas}
+                      totalGamesPlayed={totalGamesPlayed}
+                      onGetGuidance={handleGetGuidance}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="tasks">
+                    <TaskList
+                      childId={selectedChildId}
+                      children={childCards.map((c) => ({ id: c.id, name: c.name }))}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="activity">
+                    <DashboardActivityTab dashboard={childDashboard} />
+                  </TabsContent>
+                </Tabs>
+              ) : (
+                <Card className="p-8 rounded-2xl text-center text-gray-500">
+                  <Activity className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                  Could not load progress data. Try refreshing.
+                </Card>
+              )}
+            </>
           )}
-        </div>
+        </>
       )}
-
-      {/* Task List */}
-      {selectedChildForTasks && (
-        <TaskList 
-          childId={selectedChildForTasks} 
-          children={children.map(c => ({ id: c.id, name: c.name }))}
-        />
-      )}
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mt-8">
-        <Card className="p-4 sm:p-6 bg-gradient-to-br from-[#A8E6CF] to-[#8BD4AE] text-white rounded-2xl">
-          <p className="text-white/90 mb-2 text-sm sm:text-base">Total Activities</p>
-          <p className="text-2xl sm:text-3xl">40</p>
-        </Card>
-        
-        <Card className="p-4 sm:p-6 bg-gradient-to-br from-[#B3E5FC] to-[#81D4FA] text-white rounded-2xl">
-          <p className="text-white/90 mb-2 text-sm sm:text-base">Avg Progress</p>
-          <p className="text-2xl sm:text-3xl">82%</p>
-        </Card>
-        
-        <Card className="p-4 sm:p-6 bg-gradient-to-br from-[#FFF8E1] to-[#FFE082] text-[#6B5B00] rounded-2xl">
-          <p className="opacity-90 mb-2 text-sm sm:text-base">This Week</p>
-          <p className="text-2xl sm:text-3xl">+15%</p>
-        </Card>
       </div>
     </div>
   );

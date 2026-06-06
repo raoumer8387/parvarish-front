@@ -26,7 +26,7 @@ type Page = 'dashboard' | 'profiles' | 'progress' | 'chatbot' | 'activities' | '
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userType, setUserType] = useState<UserType>(null);
-  const [currentPage, setCurrentPage] = useState<Page>('chatbot');
+  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [currentActivity, setCurrentActivity] = useState<string | null>(null);
   const [path, setPath] = useState<string>(window.location.pathname);
 
@@ -90,7 +90,11 @@ export default function App() {
           if (!completed && window.location.pathname !== '/parent-onboarding') {
             window.location.replace('/parent-onboarding');
           } else {
-            setCurrentPage('chatbot');
+            setCurrentPage('dashboard');
+            if (window.location.pathname !== '/dashboard' && window.location.pathname !== '/') {
+              window.history.replaceState({}, '', '/dashboard');
+              setPath('/dashboard');
+            }
           }
         } else {
           // Child user - start at games page
@@ -135,8 +139,8 @@ export default function App() {
   const handleLogin = (type: 'parent' | 'child') => {
     setUserType(type);
     setIsLoggedIn(true);
-    // Children start at games page, parents at chatbot
-    setCurrentPage(type === 'child' ? 'games' : 'chatbot');
+    // Children start at games page, parents at dashboard
+    setCurrentPage(type === 'child' ? 'games' : 'dashboard');
     
     // Redirect child to /child/games route
     if (type === 'child') {
@@ -191,8 +195,17 @@ export default function App() {
     } catch {}
     setIsLoggedIn(false);
     setUserType(null);
-    setCurrentPage('chatbot');
+    setCurrentPage('dashboard');
   };
+
+  // Sync parent dashboard route on load (e.g. after onboarding redirect)
+  useEffect(() => {
+    if (!isLoggedIn || userType !== 'parent') return;
+    if (window.location.pathname === '/dashboard') {
+      setCurrentPage('dashboard');
+      setPath('/dashboard');
+    }
+  }, [isLoggedIn, userType]);
 
   // If route is onboarding and user is logged in, show onboarding page
   if (isLoggedIn && window.location.pathname === '/parent-onboarding') {

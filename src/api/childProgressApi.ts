@@ -1,6 +1,5 @@
 import axiosInstance from './axiosInstance';
 
-// Child Progress Dashboard Types
 export interface ChildInfo {
   id: number;
   name: string;
@@ -52,11 +51,11 @@ export interface TasksSummary {
     completed: number;
     completion_rate: number;
   }>;
-  recent_tasks: any[];
+  recent_tasks: unknown[];
 }
 
 export interface ProgressInsight {
-  type: 'improvement' | 'concern' | 'achievement';
+  type: string;
   message: string;
   action: string;
 }
@@ -81,9 +80,49 @@ export interface RecentActivity {
   score?: number;
 }
 
+export type CategoryChange = 'upgraded' | 'downgraded' | 'stable' | 'new';
+
+export interface SkillAreaItem {
+  area: string;
+  label: string;
+  score: number;
+  priority?: string;
+  game_type?: string;
+  status?: string;
+}
+
+export interface UnifiedBehaviorAnalysis {
+  child_id: number;
+  period_days: number;
+  overall_score: number;
+  unified_scores: Record<string, number>;
+  category_changes: Record<string, CategoryChange>;
+  upgraded_categories: string[];
+  downgraded_categories: string[];
+  strongest_category: string | null;
+  weakest_category: string | null;
+  sources: {
+    daily_checkin: Record<string, number>;
+    games: Record<string, number>;
+    tasks: Record<string, number>;
+  };
+  skill_areas: {
+    lacking_areas: SkillAreaItem[];
+    all_areas: SkillAreaItem[];
+    requires_attention: boolean;
+  };
+  data_freshness: {
+    last_check_in: string | null;
+    last_game: string | null;
+    last_task: string | null;
+  };
+  analyzed_at: string;
+}
+
 export interface ChildProgressDashboard {
   child_info: ChildInfo;
   period_days: number;
+  unified_analysis: UnifiedBehaviorAnalysis;
   behavior_summary: BehaviorSummary;
   games_summary: GamesSummary;
   tasks_summary: TasksSummary;
@@ -91,7 +130,6 @@ export interface ChildProgressDashboard {
   recent_activity: RecentActivity[];
 }
 
-// Overview Types
 export interface ChildOverview {
   id: number;
   name: string;
@@ -103,6 +141,9 @@ export interface ChildOverview {
     tasks_completed: number;
   };
   engagement_score: number;
+  overall_behavior_score: number;
+  unified_scores: Record<string, number>;
+  downgraded_categories: string[];
   needs_attention: boolean;
   last_activity: string;
 }
@@ -118,13 +159,36 @@ export interface AllChildrenOverview {
   };
 }
 
-// API Functions
+export interface DashboardUpdatePayload {
+  type: 'dashboard_update';
+  title?: string;
+  body?: string;
+  data?: {
+    child_id?: number;
+    child_name?: string;
+    trigger?: string;
+    unified_analysis?: UnifiedBehaviorAnalysis;
+  };
+  created_at?: string;
+}
+
 export const getChildProgressDashboard = async (
   childId: number,
   days: number = 30
 ): Promise<ChildProgressDashboard> => {
   const { data } = await axiosInstance.get(
     `/api/v1/child-progress/${childId}/dashboard`,
+    { params: { days } }
+  );
+  return data;
+};
+
+export const getChildUnifiedAnalysis = async (
+  childId: number,
+  days: number = 30
+): Promise<UnifiedBehaviorAnalysis> => {
+  const { data } = await axiosInstance.get(
+    `/api/v1/child-progress/${childId}/unified`,
     { params: { days } }
   );
   return data;
