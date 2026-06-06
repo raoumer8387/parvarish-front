@@ -6,7 +6,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Send, Bot, User, Loader2, Mic, Square, Check, X, Paperclip } from 'lucide-react';
 import * as chatApi from '../api/chatApi';
 import * as behaviorApi from '../api/behaviorApi';
-import TaskGeneration from './TaskGeneration';
 import { ThinkingIndicator } from './ThinkingIndicator';
 
 type RecommendedVideo = chatApi.RecommendedVideo;
@@ -203,7 +202,6 @@ export function ChatbotInterface() {
     setMessages(prev => [...prev, newUserMessage, thinkingMessage]);
     setThinkingMessageId(thinkingId);
     setIsLoading(true);
-    setLastAiMessage(null);
 
     try {
       const response = await chatApi.sendVoiceMessage(audioBlob, selectedChildId);
@@ -217,7 +215,6 @@ export function ChatbotInterface() {
       };
 
       setMessages(prev => prev.map(msg => (msg.id === thinkingId ? aiResponse : msg)));
-      setLastAiMessage(aiResponse);
     } catch (err) {
       console.error('Failed to send voice message:', err);
       const detail = chatApi.getChatErrorMessage(err);
@@ -340,7 +337,6 @@ export function ChatbotInterface() {
     setPendingFiles([]);
     setAttachmentHint(null);
     setIsLoading(true);
-    setLastAiMessage(null);
 
     try {
       const response =
@@ -357,7 +353,6 @@ export function ChatbotInterface() {
       };
 
       setMessages(prev => prev.map(msg => (msg.id === thinkingId ? aiResponse : msg)));
-      setLastAiMessage(aiResponse);
     } catch (err) {
       console.error('Failed to send message:', err);
       const detail = chatApi.getChatErrorMessage(err);
@@ -494,15 +489,6 @@ export function ChatbotInterface() {
                           <User className="h-5 w-5 text-white" />
                       </div>
                       )}
-                  </div>
-                )}
-                {lastAiMessage && lastAiMessage.content === message.content && message.role === 'ai' && (
-                  <div className="ml-12 mt-2">
-                    <TaskGeneration 
-                      childId={selectedChildId}
-                      chatbotResponse={lastAiMessage.content}
-                      chatbotTags={lastAiMessage.tags}
-                    />
                   </div>
                 )}
               </div>
